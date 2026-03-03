@@ -280,9 +280,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onTap: onTap,
           child: PremiumCard(
               width: 156,
+              height: 172,
               child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.start,
               children: [
                   PremiumBubbleIcon(icon: icon, color: color, size: 24, padding: 12),
                   const SizedBox(height: 12),
@@ -291,11 +292,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
-                    child: Text(value, style: PremiumTypography(context).h2),
+                    child: Text(value, style: PremiumTypography(context).h2, maxLines: 1),
                   ),
                   if (subtitle != null && subtitle.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text(subtitle, style: PremiumTypography(context).caption, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(subtitle, style: PremiumTypography(context).caption, maxLines: 1, overflow: TextOverflow.ellipsis),
                   ]
               ],
           ),
