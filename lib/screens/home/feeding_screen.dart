@@ -43,11 +43,15 @@ class _FeedingScreenState extends State<FeedingScreen> with SingleTickerProvider
   bool _remindMe = false; // Fix 2: Default to false
   int _reminderInterval = 3; // Hours
   TimeOfDay? _customReminderTime;
+  final _reminderNoteController = TextEditingController();
+  int _activeReminderCount = 0;
+  String? _nextReminderTime;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadActiveReminders();
   }
 
   @override
@@ -130,11 +134,12 @@ class _FeedingScreenState extends State<FeedingScreen> with SingleTickerProvider
 
     // Schedule Reminder if enabled
     if (_remindMe && nextDue != null) {
-        // Notification should be scheduled for the calculated nextDue time
-        // If nextDue is already in the past, we shouldn't schedule it (or schedule it immediately?)
-        // Let's only schedule if it's in the future
         if (nextDue.isAfter(DateTime.now())) {
-            await notificationService.scheduleFeedAlarm(nextDue);
+            final reminderId = nextDue.millisecondsSinceEpoch % 100000;
+            final noteText = _reminderNoteController.text.trim();
+            final body = noteText.isNotEmpty ? noteText : 'Time to feed your baby';
+            await notificationService.scheduleReminder(reminderId, nextDue, '🍼 Feeding Time!', body);
+            _loadActiveReminders();
         }
     }
     
@@ -202,6 +207,22 @@ class _FeedingScreenState extends State<FeedingScreen> with SingleTickerProvider
       );
   }
 
+  Future<void> _loadActiveReminders() async {
+    final notificationService = context.read<NotificationService>();
+    final reminders = await notificationService.getActiveReminders();
+    if (mounted) {
+      setState(() {
+        _activeReminderCount = reminders.length;
+        if (reminders.isNotEmpty) {
+          // Find the next upcoming reminder (smallest ID = earliest epoch)
+          _nextReminderTime = '${_activeReminderCount} active';
+        } else {
+          _nextReminderTime = null;
+        }
+      });
+    }
+  }
+
   Widget _buildReminderSection() {
       return Card(
           margin: const EdgeInsets.only(top: 16),
@@ -219,6 +240,19 @@ class _FeedingScreenState extends State<FeedingScreen> with SingleTickerProvider
                               Switch(value: _remindMe, onChanged: (v) => setState(() => _remindMe = v)),
                           ],
                       ),
+                      // Active reminders info
+                      if (_activeReminderCount > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Row(
+                            children: [
+                              Icon(Icons.notifications_active, size: 16, color: Colors.green),
+                              const SizedBox(width: 6),
+                              Text('$_activeReminderCount reminder${_activeReminderCount == 1 ? '' : 's'} active',
+                                style: TextStyle(fontSize: 13, color: Colors.green[700])),
+                            ],
+                          ),
+                        ),
                       if (_remindMe) ...[
                           const Divider(),
                           Row(
@@ -245,6 +279,20 @@ class _FeedingScreenState extends State<FeedingScreen> with SingleTickerProvider
                                       },
                                   ),
                               ],
+                          ),
+                          const SizedBox(height: 12),
+                          // Description / Remarks text field
+                          TextField(
+                            controller: _reminderNoteController,
+                            decoration: InputDecoration(
+                              labelText: 'Reminder note (optional)',
+                              hintText: 'e.g. Bottle feed, Solid snacks',
+                              prefixIcon: Icon(Icons.note_alt_outlined, size: 20),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            ),
+                            style: TextStyle(fontSize: 14),
                           ),
                       ]
                   ],

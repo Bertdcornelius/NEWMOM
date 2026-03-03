@@ -81,13 +81,13 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6B9080), brightness: Brightness.light), // Sage Green Seed
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFFDFDFD),
-        textTheme: GoogleFonts.nunitoTextTheme(),
+        textTheme: GoogleFonts.nunitoTextTheme(ThemeData.light().textTheme),
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6B9080), brightness: Brightness.dark),
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFF121212), // Deep charcoal backdrop
-        textTheme: GoogleFonts.nunitoTextTheme(),
+        textTheme: GoogleFonts.nunitoTextTheme(ThemeData.dark().textTheme),
       ),
       home: const AuthGate(),
     );

@@ -68,9 +68,9 @@ class _SleepScreenState extends State<SleepScreen> {
     final log = SleepLog(
       id: Uuid().v4(),
       userId: user.id,
-      startTime: startTime,
-      endTime: endTime,
-      createdAt: DateTime.now(),
+      startTime: startTime.toUtc(),
+      endTime: endTime.toUtc(),
+      createdAt: DateTime.now().toUtc(),
     );
 
     // Save using raw insert for now since service method might need update or generic usage
