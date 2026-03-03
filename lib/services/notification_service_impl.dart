@@ -30,7 +30,7 @@ class NotificationServicePlatform {
     );
 
     await _notificationsPlugin.initialize(
-      initializationSettings,
+      settings: initializationSettings,
     );
 
     // Create the high-priority Android notification channel
@@ -58,11 +58,11 @@ class NotificationServicePlatform {
     final tzTime = tz.TZDateTime.from(scheduledTime, tz.local);
 
     await _notificationsPlugin.zonedSchedule(
-      id,
-      title,
-      body,
-      tzTime,
-      fln.NotificationDetails(
+      id: id,
+      title: title,
+      body: body,
+      scheduledDate: tzTime,
+      notificationDetails: fln.NotificationDetails(
         android: fln.AndroidNotificationDetails(
           _channelId,
           _channelName,
@@ -80,7 +80,6 @@ class NotificationServicePlatform {
         ),
       ),
       androidScheduleMode: fln.AndroidScheduleMode.inexactAllowWhileIdle,
-      matchDateTimeComponents: null,
     );
   }
 
@@ -92,7 +91,7 @@ class NotificationServicePlatform {
 
   /// Cancel a specific reminder by its [id]
   Future<void> cancelReminder(int id) async {
-    await _notificationsPlugin.cancel(id);
+    await _notificationsPlugin.cancel(id: id);
   }
 
   /// Cancel all scheduled reminders
