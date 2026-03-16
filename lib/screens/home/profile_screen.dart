@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/supabase_service.dart';
-import '../../services/monetization_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../widgets/premium_ui_components.dart';
 import 'package:flutter/cupertino.dart';
@@ -232,14 +231,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Text("Exit Guest Mode (Data will be lost)", style: TextStyle(color: Colors.red)),
                 ),
                
-                const SizedBox(height: 24),
-                _sectionHeader("Developer Options"),
-                SwitchListTile(
-                    title: Text("Debug Mode (Simulate Day 31+)"),
-                    subtitle: Text("Forces app to behave as if trial expired"),
-                    value: context.watch<MonetizationService>().isDebugMode,
-                    onChanged: (val) => context.read<MonetizationService>().toggleDebugMode(val),
-                ),
             ],
         ),
     );

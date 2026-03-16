@@ -178,11 +178,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         padding: const EdgeInsets.only(bottom: 8.0),
                         child: _buildLogTile(log),
                       )).toList(),
-                    ),
+                   ),
                   );
-              },
+                },
+              ),
             ),
-          ),
     );
   }
 

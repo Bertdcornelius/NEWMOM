@@ -7,7 +7,6 @@ import 'dart:async';
 import '../../services/supabase_service.dart';
 import '../../services/notification_service.dart';
 import '../../models/feed_model.dart';
-import '../../widgets/ad_banner.dart';
 import '../../widgets/premium_ui_components.dart';
 
 class FeedingScreen extends StatefulWidget {
@@ -335,10 +334,6 @@ class _FeedingScreenState extends State<FeedingScreen> with SingleTickerProvider
                     _buildSolidFeedTab(),
                   ],
                 ),
-              ),
-              Padding(
-                padding: EdgeInsets.only(bottom: 8.0),
-                child: AdBannerWidget(),
               ),
             ],
           ),

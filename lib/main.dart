@@ -7,12 +7,9 @@ import 'services/local_storage_service.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/dashboard_screen.dart';
 
-import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'services/notification_service.dart';
-
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'services/monetization_service.dart';
+import 'services/notification_service.dart';
 import 'screens/auth/welcome_screen.dart';
 import 'providers/theme_provider.dart';
 
@@ -22,14 +19,11 @@ Future<void> main() async {
   // Initialize Supabase
   // TODO: Replace with your Supabase URL and Anon Key
   await Supabase.initialize(
-    url: 'https://ficmvzbcjlolaqykryfb.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpY212emJjamxvbGFxeWtyeWZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0Mjc0NjAsImV4cCI6MjA4MDAwMzQ2MH0.H6Vt14W0PQVETlU2bH6YdTyKrOzcvWByXH8zBZ7w0zU',
+    url: 'YOUR_SUPABASE_URL',
+    anonKey: 'YOUR_SUPABASE_ANON_KEY',
   );
   
-  // Initialize Ads (Mobile Only)
-  if (!kIsWeb) {
-    MobileAds.instance.initialize();
-  }
+
 
   final sharedPreferences = await SharedPreferences.getInstance();
   final notificationService = NotificationService();
@@ -52,14 +46,7 @@ Future<void> main() async {
             context.read<LocalStorageService>(),
           ),
         ),
-        ChangeNotifierProxyProvider2<LocalStorageService, SupabaseService, MonetizationService>(
-          create: (context) => MonetizationService(
-              context.read<LocalStorageService>(),
-              context.read<SupabaseService>(),
-          ),
-          update: (context, localStorage, supabaseService, previous) => 
-             previous ?? MonetizationService(localStorage, supabaseService),
-        ),
+
       ],
       child: const MyApp(),
     ),

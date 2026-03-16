@@ -3,7 +3,6 @@ import '../../widgets/premium_ui_components.dart';
 import '../../services/local_storage_service.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
-import '../../widgets/ad_banner.dart';
 
 class MomCareScreen extends StatefulWidget {
   const MomCareScreen({super.key});
@@ -217,7 +216,6 @@ class _MomCareScreenState extends State<MomCareScreen> {
                         },
                       ),
           ),
-          const AdBannerWidget(),
         ],
       ),
       floatingActionButton: Column(

@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
-import '../../widgets/ad_banner.dart';
 import '../../models/prescription_model.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/premium_ui_components.dart';
@@ -377,7 +376,6 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
                       },
                     ),
             ),
-            const AdBannerWidget(), // Ad at bottom
           ],
         ),
       ),

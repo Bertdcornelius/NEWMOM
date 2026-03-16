@@ -12,8 +12,6 @@ import 'milestones_screen.dart';
 import 'routine_screen.dart';
 import 'vaccine_screen.dart';
 import 'prescription_screen.dart';
-import '../../services/monetization_service.dart';
-import '../../widgets/ad_banner.dart';
 import 'history_screen.dart';
 import 'profile_screen.dart';
 import 'package:uuid/uuid.dart';
@@ -58,10 +56,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (sleepLogs.isNotEmpty) _lastSleep = sleepLogs.first; 
         _diaperLogs = diapers;
         _isLoading = false;
-
-        if (profile != null) {
-             context.read<MonetizationService>().checkStatus();
-        }
       });
     }
 
@@ -242,9 +236,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         mainAxisSpacing: 16,
                         childAspectRatio: 0.8,
                         children: [
-                           _buildFeatureCard('Milestones', 'Track Growth', Icons.star_rounded, PremiumColors(context).softAmber, () => _navigateWithAdWall('milestones', const MilestonesScreen())),
-                           _buildFeatureCard('Mom\'s Brain', 'Notes & Thoughts', Icons.psychology_rounded, PremiumColors(context).gentlePurple, () => _navigateWithAdWall('notes', const NotesScreen())),
-                           _buildFeatureCard('Routines', 'Daily Schedule', Icons.schedule_rounded, PremiumColors(context).sereneBlue, () => _navigateWithAdWall('routine', const RoutineScreen())),
+                           _buildFeatureCard('Milestones', 'Track Growth', Icons.star_rounded, PremiumColors(context).softAmber, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MilestonesScreen()))),
+                           _buildFeatureCard('Mom\'s Brain', 'Notes & Thoughts', Icons.psychology_rounded, PremiumColors(context).gentlePurple, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotesScreen()))),
+                           _buildFeatureCard('Routines', 'Daily Schedule', Icons.schedule_rounded, PremiumColors(context).sereneBlue, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RoutineScreen()))),
                            _buildFeatureCard('Health', 'Vaccines & Meds', Icons.medical_services_rounded, PremiumColors(context).sageGreen, () {
                                showModalBottomSheet(
                                    context: context, 
@@ -256,8 +250,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                        mainAxisSize: MainAxisSize.min,
                                        children: [
                                            Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: PremiumColors(context).textMuted, borderRadius: BorderRadius.circular(2))),
-                                           ListTile(leading: PremiumBubbleIcon(icon: Icons.vaccines, color: PremiumColors(context).sageGreen, size: 20, padding: 8), title: Text('Vaccines', style: PremiumTypography(context).title), onTap: () { Navigator.pop(context); _navigateWithAdWall('vaccine', const VaccineScreen()); }),
-                                           ListTile(leading: PremiumBubbleIcon(icon: Icons.medication, color: PremiumColors(context).sereneBlue, size: 20, padding: 8), title: Text('Prescriptions', style: PremiumTypography(context).title), onTap: () { Navigator.pop(context); _navigateWithAdWall('prescription', const PrescriptionScreen()); }),
+                                           ListTile(leading: PremiumBubbleIcon(icon: Icons.vaccines, color: PremiumColors(context).sageGreen, size: 20, padding: 8), title: Text('Vaccines', style: PremiumTypography(context).title), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const VaccineScreen())); }),
+                                           ListTile(leading: PremiumBubbleIcon(icon: Icons.medication, color: PremiumColors(context).sereneBlue, size: 20, padding: 8), title: Text('Prescriptions', style: PremiumTypography(context).title), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const PrescriptionScreen())); }),
                                        ],
                                      ),
                                    )
@@ -270,7 +264,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-            const AdBannerWidget(),
           ],
       );
   }
@@ -335,116 +328,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (hour >= 12 && hour < 17) return 'Good Afternoon,';
       if (hour >= 17 && hour < 21) return 'Good Evening,';
       return 'Good Night,';
-  }
-
-  // --- Ad Wall Navigation (Tiered Double-Ad Strategy) ---
-  void _navigateWithAdWall(String featureId, Widget screen) {
-      final monetization = context.read<MonetizationService>();
-
-      // If trial still active (not post-trial), navigate directly
-      if (!monetization.isPostTrial) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-          return;
-      }
-
-      // Check for existing 6-hour unlock
-      if (!monetization.isFeatureLocked(featureId)) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-          return;
-      }
-
-      // STEP 1: Show 15-second "Loading Ad" Gate
-      showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => const AlertDialog(
-              content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text("Loading Ad...", style: TextStyle(fontWeight: FontWeight.bold)),
-                      SizedBox(height: 8),
-                      Text("Please wait 15 seconds", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
-              ),
-          ),
-      );
-
-      // After 15 seconds, show the Offer Dialog
-      Future.delayed(const Duration(seconds: 15), () {
-          Navigator.pop(context); // Close loading dialog
-          _showTieredOfferDialog(featureId, screen);
-      });
-  }
-
-  void _showTieredOfferDialog(String featureId, Widget screen) {
-      showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) => AlertDialog(
-              title: Text("Premium Feature"),
-              content: Text("Choose how you'd like to access this feature:"),
-              actions: [
-                  // Option A: Use Once
-                  TextButton(
-                      onPressed: () {
-                          Navigator.pop(dialogContext);
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-                      },
-                      child: Text("Use Once"),
-                  ),
-                  // Option B: Unlock 6 Hours (Second Ad)
-                  ElevatedButton(
-                      onPressed: () {
-                          Navigator.pop(dialogContext);
-                          _showSecondAdForUnlock(featureId, screen);
-                      },
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-                      child: Text("Watch Ad → Unlock 6 Hours"),
-                  ),
-                  // Option C: Go Premium
-                  TextButton(
-                      onPressed: () {
-                          Navigator.pop(dialogContext);
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
-                      },
-                      child: Text("Go Premium", style: TextStyle(color: Colors.green)),
-                  ),
-              ],
-          ),
-      );
-  }
-
-  void _showSecondAdForUnlock(String featureId, Widget screen) {
-      // Show second 15s ad
-      showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => const AlertDialog(
-              content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text("Watching Ad for 6-Hour Unlock...", style: TextStyle(fontWeight: FontWeight.bold)),
-                      SizedBox(height: 8),
-                      Text("15 seconds remaining", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
-              ),
-          ),
-      );
-
-      Future.delayed(const Duration(seconds: 15), () async {
-          Navigator.pop(context); // Close ad dialog
-
-          // Save 6-hour unlock
-          final monetization = context.read<MonetizationService>();
-          await monetization.unlockForHours(featureId, 6);
-
-          // Navigate to feature
-          Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-      });
   }
 
   // --- HELPERS ---
