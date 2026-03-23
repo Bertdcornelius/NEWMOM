@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/note_model.dart';
-import '../../services/supabase_service.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/care_repository.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../widgets/premium_ui_components.dart';
@@ -27,8 +28,8 @@ class _NotesScreenState extends State<NotesScreen> {
   Future<void> _fetchNotes() async {
     setState(() => _isLoading = true);
 
-    final service = context.read<SupabaseService>();
-    final data = await service.getNotes();
+    final service = context.read<CareRepository>();
+    final data = (await service.getNotes()).data ?? [];
     
     if (mounted) {
       setState(() {
@@ -73,9 +74,17 @@ class _NotesScreenState extends State<NotesScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel')),
           TextButton(
             onPressed: () async {
+              if (titleController.text.length > 100) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Title cannot exceed 100 characters")));
+                return;
+              }
+              if (contentController.text.length > 5000) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Content cannot exceed 5000 characters")));
+                return;
+              }
               try {
-                  final authService = context.read<SupabaseService>();
-                  final user = authService.currentUser;
+                  final repo = context.read<CareRepository>();
+                  final user = context.read<AuthRepository>().currentUser;
                   if (user == null) {
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error: No user logged in")));
                       return;
@@ -90,7 +99,7 @@ class _NotesScreenState extends State<NotesScreen> {
                     createdAt: DateTime.now(),
                   );
 
-                  await authService.saveNote(newNote.toJson());
+                  await repo.saveNote(newNote.toJson());
                   
                   if (context.mounted) {
                       _fetchNotes();
@@ -278,14 +287,14 @@ class _NotesScreenState extends State<NotesScreen> {
                   TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel')),
                   TextButton(
                       onPressed: () async {
-                          final authService = context.read<SupabaseService>();
+                          final repo = context.read<CareRepository>();
                           if (titleController.text.isNotEmpty) {
                               final updates = {
                                   'title': titleController.text,
                                   'content': contentController.text,
                                   'tags': tagsController.text.split(',').map((e) => e.trim()).toList(),
                               };
-                              await authService.updateNote(note.id, updates);
+                              await repo.updateNote(note.id, updates);
                               
                               if (mounted) {
                                   _fetchNotes();
@@ -310,8 +319,7 @@ class _NotesScreenState extends State<NotesScreen> {
                   TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel")),
                   TextButton(
                       onPressed: () async {
-                          final authService = context.read<SupabaseService>();
-                          await authService.deleteNote(id);
+                          await context.read<CareRepository>().deleteNote(id);
                           if (mounted) {
                               Navigator.pop(context);
                               _fetchNotes();

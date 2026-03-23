@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../services/baby_data_repository.dart';
 import '../../services/local_storage_service.dart';
+import '../../widgets/premium_ui_components.dart';
 import 'dart:convert';
 
 class BabysitterModeScreen extends StatefulWidget {
@@ -94,19 +94,19 @@ class _BabysitterModeScreenState extends State<BabysitterModeScreen> {
                           ),
                           child: Center(
                             child: Text(babyName.isNotEmpty ? babyName[0].toUpperCase() : 'B',
-                                style: GoogleFonts.plusJakartaSans(fontSize: 32, fontWeight: FontWeight.w800, color: Colors.white)),
+                                style: PremiumTypography(context).bodyBold.copyWith(fontSize: 32, fontWeight: FontWeight.w800, color: Colors.white)),
                           ),
                         ),
                         const SizedBox(height: 16),
-                        Text('BABYSITTER MODE', style: GoogleFonts.plusJakartaSans(
+                        Text('BABYSITTER MODE', style: PremiumTypography(context).bodyBold.copyWith(
                           fontSize: 12, fontWeight: FontWeight.w800, color: Colors.tealAccent, letterSpacing: 2,
                         )),
-                        Text(babyName, style: GoogleFonts.plusJakartaSans(
+                        Text(babyName, style: PremiumTypography(context).bodyBold.copyWith(
                           fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white,
                         )),
                         const SizedBox(height: 8),
                         if (_profile?['baby_dob'] != null)
-                          Text('DOB: ${_profile!['baby_dob']}', style: GoogleFonts.plusJakartaSans(
+                          Text('DOB: ${_profile!['baby_dob']}', style: PremiumTypography(context).bodyBold.copyWith(
                             fontSize: 14, color: Colors.white60,
                           )),
                       ],
@@ -165,7 +165,7 @@ class _BabysitterModeScreenState extends State<BabysitterModeScreen> {
                       child: ElevatedButton.icon(
                         onPressed: () => _exitBabysitterMode(),
                         icon: const Icon(Icons.exit_to_app_rounded),
-                        label: Text('Exit Babysitter Mode', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700)),
+                        label: Text('Exit Babysitter Mode', style: PremiumTypography(context).bodyBold.copyWith(fontWeight: FontWeight.w700)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.tealAccent.shade700,
                           foregroundColor: Colors.white,
@@ -204,11 +204,11 @@ class _BabysitterModeScreenState extends State<BabysitterModeScreen> {
           Expanded(child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: GoogleFonts.plusJakartaSans(
+              Text(title, style: PremiumTypography(context).bodyBold.copyWith(
                 fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white60,
               )),
               const SizedBox(height: 2),
-              Text(value, style: GoogleFonts.plusJakartaSans(
+              Text(value, style: PremiumTypography(context).bodyBold.copyWith(
                 fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white,
               )),
             ],

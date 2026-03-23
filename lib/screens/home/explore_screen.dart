@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../widgets/premium_ui_components.dart';
 import 'notes_screen.dart';
 import 'milestones_screen.dart';
-import 'routine_screen.dart';
 import 'vaccine_screen.dart';
 import 'prescription_screen.dart';
 import 'growth_tracker_screen.dart';
@@ -15,13 +14,17 @@ import 'feeding_analytics_screen.dart';
 import 'sleep_analytics_screen.dart';
 import 'reports_screen.dart';
 import 'appointments_screen.dart';
-import 'emergency_card_screen.dart';
 import 'photo_gallery_screen.dart';
 import 'white_noise_screen.dart';
 import 'development_guide_screen.dart';
 import 'babysitter_mode_screen.dart';
 import 'data_export_screen.dart';
 import 'family_sharing_screen.dart';
+import 'milk_stash_screen.dart';
+import 'emergency_hub_screen.dart';
+import 'postpartum_wellness_screen.dart';
+import 'baby_book_generator.dart';
+import 'ai_chat_screen.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -70,7 +73,7 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 16),
+            SizedBox(height: MediaQuery.of(context).padding.top + 16),
             // Section Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -83,6 +86,68 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
                 ],
               )),
             const SizedBox(height: 24),
+            
+            // AI Spotlight Banner
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const AIChatScreen()));
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6E85B7), Color(0xFFB39DDB)], // Deep Serene Blue to Soft Purple
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(32),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF6E85B7).withValues(alpha: 0.4),
+                        blurRadius: 24,
+                        offset: const Offset(0, 12),
+                      )
+                    ]
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Text('NEO AI', style: typo.caption.copyWith(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            ),
+                            const SizedBox(height: 16),
+                            Text('Ask anything about your baby\'s health.', style: typo.h2.copyWith(color: Colors.white, fontSize: 24)),
+                            const SizedBox(height: 8),
+                            Text('24/7 Pediatric knowledge at your fingertips.', style: typo.body.copyWith(color: Colors.white70)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 36),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
 
             // Grouped List of Features
             _buildGroupedList(),
@@ -97,10 +162,10 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
   // Build features list — cached to avoid rebuilds
   List<Map<String, dynamic>> _buildFeatures() => [
     {'cat': 'Trackers', 'title': 'Milestones', 'sub': 'Track Growth', 'icon': Icons.star_rounded, 'color': PremiumColors(context).softAmber, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MilestonesScreen()))},
-    {'cat': 'Trackers', 'title': 'Routines', 'sub': 'Daily Schedule', 'icon': Icons.schedule_rounded, 'color': PremiumColors(context).sereneBlue, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RoutineScreen()))},
     {'cat': 'Trackers', 'title': 'Growth', 'sub': 'Height & Weight', 'icon': Icons.show_chart_rounded, 'color': PremiumColors(context).warmPeach, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GrowthTrackerScreen()))},
     {'cat': 'Trackers', 'title': 'Diapers', 'sub': 'Full Tracker', 'icon': Icons.child_care_rounded, 'color': Colors.brown, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DiaperScreen()))},
-    {'cat': 'Trackers', 'title': 'Pumping', 'sub': 'Sessions & Stash', 'icon': Icons.water_drop_outlined, 'color': PremiumColors(context).gentlePurple, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PumpingTrackerScreen()))},
+    {'cat': 'Trackers', 'title': 'Pumping', 'sub': 'Sessions', 'icon': Icons.water_drop_outlined, 'color': PremiumColors(context).gentlePurple, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PumpingTrackerScreen()))},
+    {'cat': 'Trackers', 'title': 'Milk Stash', 'sub': 'Inventory', 'icon': Icons.kitchen_rounded, 'color': PremiumColors(context).sereneBlue, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MilkStashScreen()))},
     {'cat': 'Trackers', 'title': 'Solid Foods', 'sub': 'Intro Log', 'icon': Icons.restaurant_rounded, 'color': PremiumColors(context).sageGreen, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FoodIntroScreen()))},
     {'cat': 'Trackers', 'title': 'Tummy Time', 'sub': 'Timer & Goals', 'icon': Icons.timer_rounded, 'color': PremiumColors(context).softAmber, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TummyTimeScreen()))},
     {'cat': 'Trackers', 'title': 'Teething', 'sub': 'Tooth Chart', 'icon': Icons.mood_rounded, 'color': PremiumColors(context).warmPeach, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TeethingTrackerScreen()))},
@@ -111,19 +176,21 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
     {'cat': 'Analytics', 'title': 'Reports', 'sub': 'Weekly Summary', 'icon': Icons.summarize_rounded, 'color': PremiumColors(context).sageGreen, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()))},
     
     // Health
+    {'cat': 'Health', 'title': 'Emergency Hub', 'sub': 'Dosages & CPR', 'icon': Icons.local_hospital_rounded, 'color': Colors.red, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmergencyHubScreen()))},
     {'cat': 'Health', 'title': 'Vaccines', 'sub': 'Medical Records', 'icon': Icons.vaccines_rounded, 'color': PremiumColors(context).sageGreen, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VaccineScreen()))},
     {'cat': 'Health', 'title': 'Meds & Rx', 'sub': 'Prescriptions', 'icon': Icons.medication_rounded, 'color': PremiumColors(context).sereneBlue, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrescriptionScreen()))},
     {'cat': 'Health', 'title': 'Appointments', 'sub': 'Doctor Visits', 'icon': Icons.calendar_month_rounded, 'color': PremiumColors(context).softAmber, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppointmentsScreen()))},
-    {'cat': 'Health', 'title': 'Emergency', 'sub': 'Info Card', 'icon': Icons.emergency_rounded, 'color': PremiumColors(context).warmPeach, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmergencyCardScreen()))},
     
     // Lifestyle
+    {'cat': 'Lifestyle', 'title': 'Postpartum', 'sub': 'Wellness Check', 'icon': Icons.favorite_rounded, 'color': PremiumColors(context).warmPeach, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PostpartumWellnessScreen()))},
     {'cat': 'Lifestyle', 'title': 'Mom\'s Brain', 'sub': 'Notes', 'icon': Icons.psychology_rounded, 'color': PremiumColors(context).gentlePurple, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotesScreen()))},
     {'cat': 'Lifestyle', 'title': 'Photos', 'sub': 'Baby Gallery', 'icon': Icons.photo_library_rounded, 'color': PremiumColors(context).gentlePurple, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PhotoGalleryScreen()))},
     {'cat': 'Lifestyle', 'title': 'White Noise', 'sub': 'Lullabies', 'icon': Icons.music_note_rounded, 'color': PremiumColors(context).sereneBlue, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WhiteNoiseScreen()))},
     {'cat': 'Lifestyle', 'title': 'Dev Guide', 'sub': 'By Age', 'icon': Icons.auto_stories_rounded, 'color': PremiumColors(context).sageGreen, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevelopmentGuideScreen()))},
     {'cat': 'Lifestyle', 'title': 'Babysitter', 'sub': 'Guest Mode', 'icon': Icons.child_friendly_rounded, 'color': Colors.teal, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BabysitterModeScreen()))},
 
-    // Tools
+    // Tools / God Mode
+    {'cat': 'Tools', 'title': 'Baby Book', 'sub': 'Auto Posters', 'icon': Icons.auto_awesome_rounded, 'color': PremiumColors(context).warmPeach, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BabyBookGeneratorScreen()))},
     {'cat': 'Tools', 'title': 'Export Data', 'sub': 'CSV Reports', 'icon': Icons.download_rounded, 'color': PremiumColors(context).sereneBlue, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DataExportScreen()))},
     {'cat': 'Tools', 'title': 'Family Share', 'sub': 'Invite Co-parents', 'icon': Icons.people_rounded, 'color': PremiumColors(context).gentlePurple, 'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FamilySharingScreen()))},
   ];

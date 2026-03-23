@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
@@ -21,19 +20,20 @@ class _WhiteNoiseScreenState extends State<WhiteNoiseScreen> with SingleTickerPr
   int _remainingSeconds = 0;
   Timer? _countdownTimer;
   double _volume = 0.7;
+  NotificationService? _notificationService;
 
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   // Local ambient audio files
   static const Map<String, String> soundUrls = {
-    'rain': 'audio/rain.wav',
-    'ocean': 'audio/ocean.wav',
-    'heartbeat': 'audio/heartbeat.wav',
+    'rain': 'audio/rain.mp3',
+    'ocean': 'audio/ocean.mp3',
+    'heartbeat': 'audio/heartbeat.mp3',
     'shush': 'audio/shush.mp3',
-    'fan': 'audio/fan.wav',
+    'fan': 'audio/fan.mp3',
     'nature': 'audio/nature.mp3',
-    'lullaby': 'audio/lullaby.wav',
-    'womb': 'audio/womb.wav',
+    'lullaby': 'audio/lullaby.mp3',
+    'womb': 'audio/womb.mp3',
   };
 
   static const sounds = [
@@ -56,11 +56,17 @@ class _WhiteNoiseScreenState extends State<WhiteNoiseScreen> with SingleTickerPr
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _notificationService = context.read<NotificationService>();
+  }
+
+  @override
   void dispose() {
     _pulseController.dispose();
     _countdownTimer?.cancel();
     _audioPlayer.stop();
-    context.read<NotificationService>().cancelReminder(99999);
+    _notificationService?.cancelReminder(99999);
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -90,7 +96,8 @@ class _WhiteNoiseScreenState extends State<WhiteNoiseScreen> with SingleTickerPr
           await _audioPlayer.setVolume(_volume);
           await _audioPlayer.play(AssetSource(url));
           if (mounted) {
-            String soundName = sounds.firstWhere((s) => s['id'] == id, orElse: () => {'title': 'White Noise'})['title'] as String;
+            final soundData = sounds.firstWhere((s) => s['id'] == id, orElse: () => {'name': 'White Noise'});
+            String soundName = soundData['name'] as String;
             await context.read<NotificationService>().scheduleReminder(99999, DateTime.now().add(Duration(minutes: _timerMinutes)), '🔊 $soundName playing', 'White noise is active');
           }
         }
@@ -142,14 +149,18 @@ class _WhiteNoiseScreenState extends State<WhiteNoiseScreen> with SingleTickerPr
     final typo = PremiumTypography(context);
 
     return PremiumScaffold(
+      backgroundColor: _activeSound != null ? const Color(0xFF0F172A) : null, // Premium dark blue when playing
       appBar: AppBar(
-        title: Text('White Noise', style: typo.h2),
+        title: const Text('White Noise'),
         backgroundColor: Colors.transparent,
+        foregroundColor: _activeSound != null ? Colors.white : null,
         elevation: 0,
         centerTitle: true,
       ),
-      body: Column(
-        children: [
+      body: Material(
+          color: Colors.transparent,
+          child: Column(
+            children: [
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -186,7 +197,7 @@ class _WhiteNoiseScreenState extends State<WhiteNoiseScreen> with SingleTickerPr
                                     ),
                                     child: Text(
                                       min < 60 ? '${min}m' : '${min ~/ 60}h',
-                                      style: GoogleFonts.plusJakartaSans(
+                                      style: PremiumTypography(context).bodyBold.copyWith(
                                         fontSize: 14, fontWeight: FontWeight.w700,
                                         color: isSelected ? Colors.white : colors.textSecondary,
                                       ),
@@ -226,6 +237,7 @@ class _WhiteNoiseScreenState extends State<WhiteNoiseScreen> with SingleTickerPr
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -246,7 +258,7 @@ class _WhiteNoiseScreenState extends State<WhiteNoiseScreen> with SingleTickerPr
           Text('Now Playing', style: typo.caption),
           Text(sound['name']!, style: typo.h2),
           const SizedBox(height: 8),
-          Text(_formatCountdown(), style: GoogleFonts.plusJakartaSans(
+          Text(_formatCountdown(), style: PremiumTypography(context).bodyBold.copyWith(
             fontSize: 32, fontWeight: FontWeight.w800, color: colors.sereneBlue,
           )),
           const SizedBox(height: 16),
@@ -303,7 +315,7 @@ class _WhiteNoiseScreenState extends State<WhiteNoiseScreen> with SingleTickerPr
           children: [
             Text(sound['emoji']!, style: const TextStyle(fontSize: 32)),
             const SizedBox(height: 8),
-            Text(sound['name']!, style: GoogleFonts.plusJakartaSans(
+            Text(sound['name']!, style: PremiumTypography(context).bodyBold.copyWith(
               fontSize: 14, fontWeight: FontWeight.w700,
               color: isActive ? colors.sereneBlue : colors.textPrimary,
             )),

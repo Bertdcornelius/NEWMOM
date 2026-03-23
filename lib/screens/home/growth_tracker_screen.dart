@@ -1,55 +1,76 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart' hide TextDirection;
-import 'dart:convert';
 import 'dart:math';
-import '../../services/local_storage_service.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/care_repository.dart';
+import '../../viewmodels/tracker_viewmodels.dart';
 import '../../widgets/premium_ui_components.dart';
 
-
-class GrowthTrackerScreen extends StatefulWidget {
+class GrowthTrackerScreen extends StatelessWidget {
   const GrowthTrackerScreen({super.key});
 
   @override
-  State<GrowthTrackerScreen> createState() => _GrowthTrackerScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (context) => GrowthViewModel(context.read<CareRepository>()),
+      child: const _GrowthTrackerScreenView(),
+    );
+  }
 }
 
-class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
-  List<Map<String, dynamic>> _entries = [];
-  String _selectedChart = 'weight'; // weight, height, head
+class _GrowthTrackerScreenView extends StatefulWidget {
+  const _GrowthTrackerScreenView();
 
   @override
-  void initState() {
-    super.initState();
+  State<_GrowthTrackerScreenView> createState() => _GrowthTrackerScreenViewState();
+}
 
-    _loadData();
-  }
+class _GrowthTrackerScreenViewState extends State<_GrowthTrackerScreenView> {
+  String _selectedChart = 'weight'; // weight, height, head
 
-
-
-  void _loadData() {
-    final localStorage = context.read<LocalStorageService>();
-    final raw = localStorage.getString('growth_entries');
-    if (raw != null) {
-      _entries = List<Map<String, dynamic>>.from(jsonDecode(raw));
+  Future<void> _handleSave(BuildContext context, Map<String, dynamic> entry) async {
+    final user = context.read<AuthRepository>().currentUser;
+    if (user == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not logged in'), backgroundColor: Colors.red));
+      return;
     }
-
-    if (mounted) setState(() {});
+    
+    final vm = context.read<GrowthViewModel>();
+    final newEntry = {
+      'user_id': user.id,
+      'weight_kg': entry['weight'],
+      'height_cm': entry['height'],
+      'head_circ_cm': entry['head'],
+      'timestamp': entry['timestamp'],
+    };
+    
+    final success = await vm.saveEntry(newEntry);
+    
+    if (mounted) {
+      if (!success) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(vm.errorMessage ?? 'Failed to save'), backgroundColor: Colors.red));
+        vm.clearError();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Measurement saved! ✅')));
+      }
+    }
   }
-
-  Future<void> _saveData() async {
-    final localStorage = context.read<LocalStorageService>();
-    await localStorage.saveString('growth_entries', jsonEncode(_entries));
-  }
-
-
 
   @override
   Widget build(BuildContext context) {
+    final vm = context.watch<GrowthViewModel>();
     final colors = PremiumColors(context);
     final typo = PremiumTypography(context);
     final isDark = colors.isDark;
+
+    // Handle asynchronous uncaught stream errors globally
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (vm.errorMessage != null && !vm.errorMessage!.contains('save') && !vm.errorMessage!.contains('delete')) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(vm.errorMessage!), backgroundColor: Colors.red));
+        vm.clearError();
+      }
+    });
 
     return PremiumScaffold(
       appBar: AppBar(
@@ -59,7 +80,7 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
         centerTitle: true,
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddDialog,
+        onPressed: () => _showAddDialog(context),
         backgroundColor: colors.sageGreen,
         child: const Icon(Icons.add, color: Colors.white),
       ),
@@ -74,11 +95,11 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
                   // Chart Type Selector
                   Row(
                     children: [
-                      _chartTab('Weight', 'weight', Icons.monitor_weight_outlined, colors.warmPeach),
+                      _chartTab('Weight', 'weight', Icons.monitor_weight_outlined, colors.warmPeach, colors),
                       const SizedBox(width: 10),
-                      _chartTab('Height', 'height', Icons.height_rounded, colors.sereneBlue),
+                      _chartTab('Height', 'height', Icons.height_rounded, colors.sereneBlue, colors),
                       const SizedBox(width: 10),
-                      _chartTab('Head', 'head', Icons.circle_outlined, colors.gentlePurple),
+                      _chartTab('Head', 'head', Icons.circle_outlined, colors.gentlePurple, colors),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -87,12 +108,12 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
                   PremiumCard(
                     child: SizedBox(
                       height: 220,
-                      child: _entries.isEmpty
+                      child: vm.entries.isEmpty
                           ? Center(child: Text('Add your first measurement!', style: typo.body))
                           : CustomPaint(
                               size: const Size(double.infinity, 220),
                               painter: _GrowthChartPainter(
-                                entries: _entries,
+                                entries: List.from(vm.entries.reversed), // Chronological for graph
                                 field: _selectedChart,
                                 lineColor: _selectedChart == 'weight'
                                     ? colors.warmPeach
@@ -109,8 +130,8 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
                   const SizedBox(height: 8),
 
                   // Latest Stats
-                  if (_entries.isNotEmpty) ...[
-                    _buildLatestStats(colors, typo),
+                  if (vm.entries.isNotEmpty) ...[
+                    _buildLatestStats(vm.entries, colors, typo),
                     const SizedBox(height: 24),
                   ],
 
@@ -118,7 +139,9 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
                   Text('History', style: typo.h2),
                   const SizedBox(height: 12),
 
-                  if (_entries.isEmpty)
+                  if (vm.isLoading)
+                    const Center(child: CircularProgressIndicator())
+                  else if (vm.entries.isEmpty)
                     PremiumCard(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
@@ -134,10 +157,12 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
                       ),
                     )
                   else
-                    ...List.generate(_entries.length, (i) {
-                      final entry = _entries[_entries.length - 1 - i];
-                      return _buildEntryTile(entry, colors, typo, _entries.length - 1 - i);
-                    }),
+                    Column(
+                      children: List.generate(vm.entries.length, (index) {
+                        final entry = vm.entries[index];
+                        return _buildEntryTile(context, entry, colors, typo, vm);
+                      }),
+                    ),
 
                   const SizedBox(height: 80),
                 ],
@@ -149,9 +174,8 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
     );
   }
 
-  Widget _chartTab(String label, String key, IconData icon, Color color) {
+  Widget _chartTab(String label, String key, IconData icon, Color color, PremiumColors colors) {
     final isSelected = _selectedChart == key;
-    final colors = PremiumColors(context);
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _selectedChart = key),
@@ -167,7 +191,7 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
             children: [
               Icon(icon, color: isSelected ? color : colors.textMuted, size: 22),
               const SizedBox(height: 4),
-              Text(label, style: GoogleFonts.plusJakartaSans(
+              Text(label, style: PremiumTypography(context).bodyBold.copyWith(
                 fontSize: 12, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: isSelected ? color : colors.textSecondary,
               )),
@@ -178,15 +202,15 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
     );
   }
 
-  Widget _buildLatestStats(PremiumColors colors, PremiumTypography typo) {
-    final latest = _entries.last;
+  Widget _buildLatestStats(List<Map<String,dynamic>> entries, PremiumColors colors, PremiumTypography typo) {
+    final latest = entries.first; // Since list is reversed
     return Row(
       children: [
-        _statBubble('Weight', '${latest['weight'] ?? '--'} kg', colors.warmPeach, colors),
+        _statBubble('Weight', '${latest['weight_kg'] ?? '--'} kg', colors.warmPeach, colors),
         const SizedBox(width: 12),
-        _statBubble('Height', '${latest['height'] ?? '--'} cm', colors.sereneBlue, colors),
+        _statBubble('Height', '${latest['height_cm'] ?? '--'} cm', colors.sereneBlue, colors),
         const SizedBox(width: 12),
-        _statBubble('Head', '${latest['head'] ?? '--'} cm', colors.gentlePurple, colors),
+        _statBubble('Head', '${latest['head_circ_cm'] ?? '--'} cm', colors.gentlePurple, colors),
       ],
     );
   }
@@ -199,7 +223,7 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
           children: [
             Text(label, style: PremiumTypography(context).caption),
             const SizedBox(height: 4),
-            Text(value, style: GoogleFonts.plusJakartaSans(
+            Text(value, style: PremiumTypography(context).bodyBold.copyWith(
               fontSize: 18, fontWeight: FontWeight.w800, color: color,
             )),
           ],
@@ -208,12 +232,17 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
     );
   }
 
-  Widget _buildEntryTile(Map<String, dynamic> entry, PremiumColors colors, PremiumTypography typo, int index) {
-    final date = entry['date'] ?? '';
+  Widget _buildEntryTile(BuildContext context, Map<String, dynamic> entry, PremiumColors colors, PremiumTypography typo, GrowthViewModel vm) {
+    String dateStr = 'Unknown';
+    try {
+      final dt = DateTime.parse(entry['timestamp']).toLocal();
+      dateStr = DateFormat('MMM d, yyyy').format(dt);
+    } catch (_) {}
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: DataTile(
-        onTap: () => _showDeleteDialog(index),
+        onTap: () => _showDeleteDialog(context, entry, colors, vm),
         child: Row(
           children: [
             Container(
@@ -224,9 +253,9 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(date, style: typo.bodyBold),
+                Text(dateStr, style: typo.bodyBold),
                 const SizedBox(height: 2),
-                Text('${entry['weight'] ?? '--'} kg  •  ${entry['height'] ?? '--'} cm  •  Head: ${entry['head'] ?? '--'} cm',
+                Text('${entry['weight_kg'] ?? '--'} kg  •  ${entry['height_cm'] ?? '--'} cm  •  Head: ${entry['head_circ_cm'] ?? '--'} cm',
                     style: typo.caption),
               ],
             )),
@@ -237,16 +266,17 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
     );
   }
 
-  void _showAddDialog() {
+  void _showAddDialog(BuildContext context) {
     final weightC = TextEditingController();
     final heightC = TextEditingController();
     final headC = TextEditingController();
     DateTime selectedDate = DateTime.now();
+    final colors = PremiumColors(context);
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: PremiumColors(context).surface,
+      backgroundColor: colors.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(left: 24, right: 24, top: 24, bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
@@ -254,34 +284,54 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: PremiumColors(context).textMuted, borderRadius: BorderRadius.circular(2)))),
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: colors.textMuted, borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 20),
             Text('New Measurement', style: PremiumTypography(context).h2),
             const SizedBox(height: 20),
-            _inputField(weightC, 'Weight (kg)', Icons.monitor_weight_outlined, PremiumColors(context).warmPeach),
+            _inputField(weightC, 'Weight (kg)', Icons.monitor_weight_outlined, colors.warmPeach, colors),
             const SizedBox(height: 12),
-            _inputField(heightC, 'Height (cm)', Icons.height_rounded, PremiumColors(context).sereneBlue),
+            _inputField(heightC, 'Height (cm)', Icons.height_rounded, colors.sereneBlue, colors),
             const SizedBox(height: 12),
-            _inputField(headC, 'Head Circumference (cm)', Icons.circle_outlined, PremiumColors(context).gentlePurple),
+            _inputField(headC, 'Head Circumference (cm)', Icons.circle_outlined, colors.gentlePurple, colors),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               child: PremiumActionButton(
                 label: 'Save Measurement',
                 icon: Icons.check_circle_outline_rounded,
-                color: PremiumColors(context).sageGreen,
+                color: colors.sageGreen,
                 onTap: () {
-                  if (weightC.text.isEmpty && heightC.text.isEmpty && headC.text.isEmpty) return;
-                  _entries.add({
-                    'date': DateFormat('MMM d, yyyy').format(selectedDate),
-                    'weight': weightC.text.isNotEmpty ? double.tryParse(weightC.text) : null,
-                    'height': heightC.text.isNotEmpty ? double.tryParse(heightC.text) : null,
-                    'head': headC.text.isNotEmpty ? double.tryParse(headC.text) : null,
+                  if (weightC.text.trim().isEmpty && heightC.text.trim().isEmpty && headC.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter at least one measurement.')));
+                    return;
+                  }
+                  
+                  final w = double.tryParse(weightC.text.trim());
+                  final h = double.tryParse(heightC.text.trim());
+                  final he = double.tryParse(headC.text.trim());
+
+                  if ((weightC.text.trim().isNotEmpty && w == null) || 
+                      (heightC.text.trim().isNotEmpty && h == null) || 
+                      (headC.text.trim().isNotEmpty && he == null)) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter valid numeric values.')));
+                    return;
+                  }
+
+                  if ((w != null && (w <= 0 || w > 200)) || 
+                      (h != null && (h <= 0 || h > 200)) || 
+                      (he != null && (he <= 0 || he > 200))) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Measurements are outside realistic bounds (0-200).')));
+                    return;
+                  }
+
+                  final newEntry = {
+                    'weight': w,
+                    'height': h,
+                    'head': he,
                     'timestamp': selectedDate.toIso8601String(),
-                  });
-                  _saveData();
+                  };
+                  _handleSave(context, newEntry);
                   Navigator.pop(ctx);
-                  _loadData();
                 },
               ),
             ),
@@ -291,7 +341,7 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
     );
   }
 
-  Widget _inputField(TextEditingController controller, String label, IconData icon, Color color) {
+  Widget _inputField(TextEditingController controller, String label, IconData icon, Color color, PremiumColors colors) {
     return TextField(
       controller: controller,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -299,14 +349,14 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
         labelText: label,
         prefixIcon: Icon(icon, color: color, size: 22),
         filled: true,
-        fillColor: PremiumColors(context).surfaceMuted,
+        fillColor: colors.surfaceMuted,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
   }
 
-  void _showDeleteDialog(int index) {
+  void _showDeleteDialog(BuildContext context, Map<String, dynamic> item, PremiumColors colors, GrowthViewModel vm) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -315,13 +365,19 @@ class _GrowthTrackerScreenState extends State<GrowthTrackerScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           TextButton(
-            onPressed: () {
-              _entries.removeAt(index);
-              _saveData();
-              Navigator.pop(ctx);
-              _loadData();
+            onPressed: () async {
+              if (item['id'] != null) {
+                final success = await vm.deleteEntry(item['id']);
+                if (ctx.mounted) {
+                   Navigator.pop(ctx);
+                   if (!success) {
+                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(vm.errorMessage ?? 'Failed to delete'), backgroundColor: Colors.red));
+                     vm.clearError();
+                   }
+                }
+              }
             },
-            child: Text('Delete', style: TextStyle(color: PremiumColors(context).warmPeach)),
+            child: Text('Delete', style: TextStyle(color: colors.warmPeach)),
           ),
         ],
       ),
@@ -350,9 +406,12 @@ class _GrowthChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (entries.isEmpty) return;
+    
+    // Map JSON field to actual database field names used in entries
+    final mappedField = field == 'weight' ? 'weight_kg' : field == 'height' ? 'height_cm' : 'head_circ_cm';
 
     final values = entries
-        .map((e) => (e[field] as num?)?.toDouble())
+        .map((e) => (e[mappedField] as num?)?.toDouble())
         .where((v) => v != null)
         .cast<double>()
         .toList();

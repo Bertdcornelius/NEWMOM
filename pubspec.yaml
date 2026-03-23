@@ -26,14 +26,52 @@ dependencies:
   image_picker: ^1.0.4
   google_fonts: ^8.0.0
   timezone: ^0.10.1
-
+  flutter_native_splash: ^2.4.7
+  cached_network_image: ^3.4.1
+  google_generative_ai: ^0.4.7
+  url_launcher: ^6.3.2
+  connectivity_plus: ^7.0.0
+  sqflite: ^2.3.0
+  path_provider: ^2.1.2
+  path: ^1.9.0
+  sentry_flutter: ^9.0.0
+  firebase_crashlytics: ^4.0.0
+  image: ^4.8.0
+  pdf: ^3.12.0
+  printing: ^5.14.3
+  quick_actions: ^1.1.0
+  android_intent_plus: ^6.0.0
+  geolocator: ^14.0.2
+  geocoding: ^4.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
+  generate: true
   uses-material-design: true
 
   assets:
+    - assets/
+    - assets/audio/
     - assets/logo.png
+    - .env
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/logo_transparent.png"
+  adaptive_icon_background: "#F2F6F5"
+  adaptive_icon_foreground: "assets/logo_transparent.png"
+
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: "assets/logo_padded.png"
+  android: true
+  ios: true
+  android_12:
+    color: "#FFFFFF"
+    image: "assets/logo_padded.png"

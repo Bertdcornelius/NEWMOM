@@ -33,7 +33,7 @@ class _SleepAnalyticsScreenState extends State<SleepAnalyticsScreen> {
     final logs = await service.getSleepLogs();
     if (mounted) {
       setState(() {
-        _sleepLogs = logs;
+        _sleepLogs = List<Map<String, dynamic>>.from(logs);
         _isLoading = false;
       });
     }

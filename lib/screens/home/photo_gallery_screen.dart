@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'dart:convert';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import '../../services/local_storage_service.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/care_repository.dart';
+import '../../core/result.dart';
 import '../../widgets/premium_ui_components.dart';
-import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PhotoGalleryScreen extends StatefulWidget {
   const PhotoGalleryScreen({super.key});
@@ -16,28 +17,74 @@ class PhotoGalleryScreen extends StatefulWidget {
 }
 
 class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
+  final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _photos = [];
+  bool _isLoading = true;
+  bool _isFetchingMore = false;
+  bool _hasMore = true;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadData();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 && !_isLoading && !_isFetchingMore && _hasMore) {
+      _loadMore();
+    }
   }
 
   @override
   void dispose() {
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _loadData() {
-    final ls = context.read<LocalStorageService>();
-    final raw = ls.getString('photo_gallery');
-    if (raw != null) _photos = List<Map<String, dynamic>>.from(jsonDecode(raw));
-    if (mounted) setState(() {});
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    final ss = context.read<CareRepository>();
+    final data = (await ss.getGalleryPhotos(start: 0, limit: 15)).data ?? [];
+    if (mounted) {
+      setState(() {
+        _photos = List<Map<String, dynamic>>.from(data);
+        _isLoading = false;
+        _hasMore = data.length == 15;
+      });
+    }
   }
 
-  Future<void> _saveData() async {
-    await context.read<LocalStorageService>().saveString('photo_gallery', jsonEncode(_photos));
+  Future<void> _loadMore() async {
+    setState(() => _isFetchingMore = true);
+    final ss = context.read<CareRepository>();
+    final data = (await ss.getGalleryPhotos(start: _photos.length, limit: 15)).data ?? [];
+    if (mounted) {
+      setState(() {
+        _photos.addAll(List<Map<String, dynamic>>.from(data));
+        _isFetchingMore = false;
+        _hasMore = data.length == 15;
+      });
+    }
+  }
+
+  Future<void> _savePhoto(String url, String caption) async {
+    final user = context.read<AuthRepository>().currentUser;
+    if (user == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not logged in'), backgroundColor: Colors.red));
+      return;
+    }
+    final ss = context.read<CareRepository>();
+    final result = await ss.saveGalleryPhoto({
+      'user_id': user.id,
+      'image_url': url,
+      'caption': caption,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (!result.isSuccess && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message ?? 'Failed to save photo'), backgroundColor: Colors.red));
+    }
+    _loadData();
   }
 
   // Group photos by month
@@ -73,7 +120,9 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
         backgroundColor: colors.gentlePurple,
         child: const Icon(Icons.add_a_photo_rounded, color: Colors.white),
       ),
-      body: Column(
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : Column(
         children: [
           Expanded(
             child: _photos.isEmpty
@@ -88,6 +137,7 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
                     ],
                   ))
                 : SingleChildScrollView(
+                    controller: _scrollController,
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -127,6 +177,12 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
                             ],
                           );
                         }),
+                        
+                        if (_isFetchingMore)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24.0),
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
 
                         const SizedBox(height: 80),
                       ],
@@ -139,7 +195,6 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
   }
 
   Widget _buildPhotoTile(Map<String, dynamic> photo, PremiumColors colors) {
-    final path = photo['path'] as String?;
     final caption = photo['caption'] as String?;
 
     return GestureDetector(
@@ -158,8 +213,13 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (path != null && File(path).existsSync())
-                Image.file(File(path), fit: BoxFit.cover)
+              if (photo['image_url'] != null)
+                CachedNetworkImage(
+                  imageUrl: photo['image_url'],
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(color: colors.surfaceMuted, child: const Center(child: CircularProgressIndicator())),
+                  errorWidget: (context, url, error) => Container(color: colors.surfaceMuted, child: const Icon(Icons.broken_image)),
+                )
               else
                 Container(
                   color: colors.gentlePurple.withValues(alpha: 0.15),
@@ -177,7 +237,7 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
                         colors: [Colors.transparent, Colors.black.withValues(alpha: 0.6)],
                       ),
                     ),
-                    child: Text(caption!, style: GoogleFonts.plusJakartaSans(
+                    child: Text(caption!, style: PremiumTypography(context).bodyBold.copyWith(
                       fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white,
                     ), maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
@@ -222,33 +282,57 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Caption'),
-        content: TextField(
-          controller: captionC,
-          decoration: const InputDecoration(hintText: 'What\'s this moment? (optional)'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _photos.insert(0, {
-                'path': picked.path,
-                'caption': captionC.text,
-                'timestamp': DateTime.now().toIso8601String(),
-              });
-              _saveData();
-              Navigator.pop(ctx);
-              _loadData();
-            },
-            child: const Text('Save'),
-          ),
-        ],
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) {
+          bool isUploading = false; // Moved inside StatefulBuilder
+          return AlertDialog(
+            title: const Text('Add Caption'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isUploading) const LinearProgressIndicator(),
+                TextField(
+                  controller: captionC,
+                  enabled: !isUploading,
+                  decoration: const InputDecoration(hintText: 'What\'s this moment? (optional)'),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isUploading ? null : () async {
+                  setD(() => isUploading = true);
+                  final ss = context.read<CareRepository>();
+                  final bytes = await picked.readAsBytes();
+                  final user = context.read<AuthRepository>().currentUser;
+                  if (user == null) {
+                    setD(() => isUploading = false);
+                    return;
+                  }
+                  final uploadRes = await ss.uploadImage(user.id, picked.path, bytes);
+                  
+                  if (uploadRes is Success) {
+                    await _savePhoto(uploadRes.data!, captionC.text);
+                  }
+                  
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                  }
+                  if (mounted) {
+                    _loadData();
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        }
       ),
     );
   }
 
   void _showPhotoDetail(Map<String, dynamic> photo) {
-    final path = photo['path'] as String?;
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -256,10 +340,15 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (path != null && File(path).existsSync())
+            if (photo['image_url'] != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                child: Image.file(File(path), fit: BoxFit.contain),
+                child: CachedNetworkImage(
+                  imageUrl: photo['image_url'],
+                  fit: BoxFit.contain,
+                  placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+                  errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 48),
+                ),
               )
             else
               Container(
@@ -273,7 +362,7 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
             if (photo['caption']?.isNotEmpty == true)
               Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(photo['caption'], style: GoogleFonts.plusJakartaSans(
+                child: Text(photo['caption'], style: PremiumTypography(context).bodyBold.copyWith(
                   color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600,
                 )),
               ),
@@ -291,11 +380,11 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           TextButton(
-            onPressed: () {
-              _photos.remove(photo);
-              _saveData();
-              Navigator.pop(ctx);
+            onPressed: () async {
+              final ss = context.read<CareRepository>();
+              await ss.deleteGalleryPhoto(photo['id']);
               _loadData();
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),

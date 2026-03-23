@@ -2,20 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'dart:convert';
 import 'dart:async';
 import '../../services/local_storage_service.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/care_repository.dart';
+import '../../viewmodels/tracker_viewmodels.dart';
 import '../../widgets/premium_ui_components.dart';
 
-class PumpingTrackerScreen extends StatefulWidget {
+class PumpingTrackerScreen extends StatelessWidget {
   const PumpingTrackerScreen({super.key});
 
   @override
-  State<PumpingTrackerScreen> createState() => _PumpingTrackerScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (context) => PumpingViewModel(context.read<CareRepository>()),
+      child: const _PumpingTrackerScreenView(),
+    );
+  }
 }
 
-class _PumpingTrackerScreenState extends State<PumpingTrackerScreen> {
-  List<Map<String, dynamic>> _sessions = [];
+class _PumpingTrackerScreenView extends StatefulWidget {
+  const _PumpingTrackerScreenView();
+
+  @override
+  State<_PumpingTrackerScreenView> createState() => _PumpingTrackerScreenViewState();
+}
+
+class _PumpingTrackerScreenViewState extends State<_PumpingTrackerScreenView> {
   double _milkStash = 0;
 
   // Timer
@@ -28,7 +41,7 @@ class _PumpingTrackerScreenState extends State<PumpingTrackerScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadLocalStash();
   }
 
   @override
@@ -38,17 +51,16 @@ class _PumpingTrackerScreenState extends State<PumpingTrackerScreen> {
     super.dispose();
   }
 
-  void _loadData() {
+  void _loadLocalStash() {
     final ls = context.read<LocalStorageService>();
-    final raw = ls.getString('pumping_sessions');
-    if (raw != null) _sessions = List<Map<String, dynamic>>.from(jsonDecode(raw));
-    _milkStash = double.tryParse(ls.getString('milk_stash') ?? '0') ?? 0;
-    if (mounted) setState(() {});
+    setState(() {
+      _milkStash = double.tryParse(ls.getString('milk_stash') ?? '0') ?? 0;
+    });
   }
 
-  Future<void> _saveData() async {
+  Future<void> _updateStash(double amount) async {
     final ls = context.read<LocalStorageService>();
-    await ls.saveString('pumping_sessions', jsonEncode(_sessions));
+    setState(() => _milkStash = amount);
     await ls.saveString('milk_stash', _milkStash.toString());
   }
 
@@ -74,30 +86,57 @@ class _PumpingTrackerScreenState extends State<PumpingTrackerScreen> {
     return '$m:$s';
   }
 
-  void _saveSession() {
+  Future<void> _onSaveSessionPressed() async {
+    final user = context.read<AuthRepository>().currentUser;
+    if (user == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not logged in'), backgroundColor: Colors.red));
+      return;
+    }
+
     final durationMin = _stopwatch.elapsed.inMinutes.clamp(1, 120);
-    _sessions.insert(0, {
-      'side': _selectedSide,
-      'duration_min': durationMin,
-      'amount_ml': _amountMl,
-      'date': DateFormat('MMM d, h:mm a').format(DateTime.now()),
-      'timestamp': DateTime.now().toIso8601String(),
-    });
     _milkStash += _amountMl;
     _stopwatch.stop();
     _stopwatch.reset();
     _isTimerRunning = false;
     _uiTimer?.cancel();
-    _saveData();
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pump session saved! 🍼')));
+    
+    final newSession = {
+      'user_id': user.id,
+      'side': _selectedSide,
+      'duration_min': durationMin,
+      'amount_ml': _amountMl,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    
+    final vm = context.read<PumpingViewModel>();
+    final success = await vm.saveEntry(newSession);
+    
+    if (mounted) {
+      _updateStash(_milkStash);
+      setState(() {});
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pump session saved! 🍼')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(vm.errorMessage ?? 'Failed to log pump session'), backgroundColor: Colors.red));
+        vm.clearError();
+      }
+    }
   }
-
 
   @override
   Widget build(BuildContext context) {
+    final vm = context.watch<PumpingViewModel>();
     final colors = PremiumColors(context);
     final typo = PremiumTypography(context);
+
+    // Global error listener
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (vm.errorMessage != null && !vm.errorMessage!.contains('save') && !vm.errorMessage!.contains('delete')) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(vm.errorMessage!), backgroundColor: Colors.red));
+        vm.clearError();
+      }
+    });
 
     return PremiumScaffold(
       appBar: AppBar(
@@ -134,12 +173,12 @@ class _PumpingTrackerScreenState extends State<PumpingTrackerScreen> {
                           children: [
                             _stashBtn(Icons.remove, () {
                               setState(() { _milkStash = (_milkStash - 30).clamp(0, 99999); });
-                              _saveData();
+                              _updateStash(_milkStash);
                             }, colors),
                             const SizedBox(width: 8),
                             _stashBtn(Icons.add, () {
                               setState(() { _milkStash += 30; });
-                              _saveData();
+                              _updateStash(_milkStash);
                             }, colors),
                           ],
                         ),
@@ -170,7 +209,7 @@ class _PumpingTrackerScreenState extends State<PumpingTrackerScreen> {
                                   decoration: BoxDecoration(
                                     color: isSelected ? colors.gentlePurple : colors.surfaceMuted,
                                     borderRadius: BorderRadius.circular(100),
-                                  ), // Closing BoxDecoration
+                                  ),
                                   child: Text(side, style: GoogleFonts.plusJakartaSans(
                                     fontSize: 13, fontWeight: FontWeight.w600,
                                     color: isSelected ? Colors.white : colors.textSecondary,
@@ -238,7 +277,7 @@ class _PumpingTrackerScreenState extends State<PumpingTrackerScreen> {
                             label: 'Save Session',
                             icon: Icons.check_circle_outline_rounded,
                             color: colors.gentlePurple,
-                            onTap: _saveSession,
+                            onTap: _onSaveSessionPressed,
                           ),
                         ),
                       ],
@@ -250,36 +289,23 @@ class _PumpingTrackerScreenState extends State<PumpingTrackerScreen> {
                   Text('Session History', style: typo.h2),
                   const SizedBox(height: 12),
 
-                  if (_sessions.isEmpty)
+                  if (vm.isLoading)
+                    const Center(child: CircularProgressIndicator())
+                  else if (vm.entries.isEmpty)
                     PremiumCard(child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: Center(child: Text('No sessions yet', style: typo.body)),
                     ))
                   else
-                    ...List.generate(_sessions.length > 15 ? 15 : _sessions.length, (i) {
-                      final s = _sessions[i];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: DataTile(
-                          onTap: () => _deleteSession(i),
-                          child: Row(
-                            children: [
-                              PremiumBubbleIcon(icon: Icons.water_drop_outlined, color: colors.gentlePurple, size: 20, padding: 10),
-                              const SizedBox(width: 12),
-                              Expanded(child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${s['side']} • ${s['duration_min']} min • ${s['amount_ml']} ml',
-                                      style: typo.bodyBold),
-                                  Text(s['date'] ?? '', style: typo.caption),
-                                ],
-                              )),
-                              Icon(Icons.chevron_right_rounded, color: colors.textMuted, size: 20),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
+                    Column(
+                      children: List.generate(
+                        vm.entries.length > 15 ? 15 : vm.entries.length,
+                        (index) {
+                          final s = vm.entries[index];
+                          return _buildSessionTile(context, s, vm, colors, typo);
+                        }
+                      ),
+                    ),
 
                   const SizedBox(height: 80),
                 ],
@@ -305,7 +331,7 @@ class _PumpingTrackerScreenState extends State<PumpingTrackerScreen> {
     );
   }
 
-  void _deleteSession(int index) {
+  void _deleteSession(BuildContext context, Map<String, dynamic> item, PumpingViewModel vm) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -313,17 +339,56 @@ class _PumpingTrackerScreenState extends State<PumpingTrackerScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           TextButton(
-            onPressed: () {
-              _milkStash -= (_sessions[index]['amount_ml'] as num?)?.toDouble() ?? 0;
-              if (_milkStash < 0) _milkStash = 0;
-              _sessions.removeAt(index);
-              _saveData();
-              Navigator.pop(ctx);
-              setState(() {});
+            onPressed: () async {
+              if (item['id'] != null) {
+                final success = await vm.deleteEntry(item['id']);
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  if (!success) {
+                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(vm.errorMessage ?? 'Failed to delete'), backgroundColor: Colors.red));
+                     vm.clearError();
+                  } else {
+                     setState(() {
+                       _milkStash -= (item['amount_ml'] as num?)?.toDouble() ?? 0;
+                       if (_milkStash < 0) _milkStash = 0;
+                     });
+                     _updateStash(_milkStash);
+                  }
+                }
+              }
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSessionTile(BuildContext context, Map<String, dynamic> s, PumpingViewModel vm, PremiumColors colors, PremiumTypography typo) {
+    String dateStr = s['date'] ?? '';
+    if (dateStr.isEmpty && s['timestamp'] != null) {
+      dateStr = DateFormat('MMM d, h:mm a').format(DateTime.parse(s['timestamp']).toLocal());
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DataTile(
+        onTap: () => _deleteSession(context, s, vm),
+        child: Row(
+          children: [
+            PremiumBubbleIcon(icon: Icons.water_drop_outlined, color: colors.gentlePurple, size: 20, padding: 10),
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${s['side']} • ${s['duration_min']} min • ${s['amount_ml']} ml',
+                    style: typo.bodyBold),
+                Text(dateStr, style: typo.caption),
+              ],
+            )),
+            Icon(Icons.chevron_right_rounded, color: colors.textMuted, size: 20),
+          ],
+        ),
       ),
     );
   }

@@ -1,16 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:new_mom_tracker/screens/home/feeding_screen.dart';
 import 'package:new_mom_tracker/services/baby_data_repository.dart';
 import 'package:new_mom_tracker/services/notification_service.dart';
+import 'package:new_mom_tracker/repositories/auth_repository.dart';
+import 'package:new_mom_tracker/repositories/feeding_repository.dart';
 import 'package:new_mom_tracker/viewmodels/feeding_viewmodel.dart';
 import 'package:new_mom_tracker/providers/theme_provider.dart';
+
 
 // Fake implementations for Providers
 class FakeBabyDataRepository extends Fake with ChangeNotifier implements BabyDataRepository {
   Future<void> logFeed(String type, Map<String, dynamic> details, DateTime time) async {}
 }
+
+class FakeAuthRepository extends Fake implements AuthRepository {
+  @override
+  User? get currentUser => null;
+}
+
+class FakeFeedingRepository extends Fake implements FeedingRepository {}
 
 class FakeNotificationService extends Fake implements NotificationService {
   @override
@@ -19,13 +30,17 @@ class FakeNotificationService extends Fake implements NotificationService {
 
 void main() {
   late FakeBabyDataRepository fakeBabyDataRepository;
+  late FakeAuthRepository fakeAuthRepository;
+  late FakeFeedingRepository fakeFeedingRepository;
   late FakeNotificationService fakeNotificationService;
   late FeedingViewModel feedingViewModel;
 
   setUp(() {
     fakeBabyDataRepository = FakeBabyDataRepository();
+    fakeAuthRepository = FakeAuthRepository();
+    fakeFeedingRepository = FakeFeedingRepository();
     fakeNotificationService = FakeNotificationService();
-    feedingViewModel = FeedingViewModel(fakeBabyDataRepository);
+    feedingViewModel = FeedingViewModel(fakeAuthRepository, fakeFeedingRepository, fakeNotificationService);
   });
 
   Widget createFeedingScreen() {
@@ -34,6 +49,8 @@ void main() {
         ChangeNotifierProvider<ThemeProvider>(create: (_) => ThemeProvider()),
         Provider<NotificationService>.value(value: fakeNotificationService),
         ChangeNotifierProvider<BabyDataRepository>.value(value: fakeBabyDataRepository),
+        Provider<AuthRepository>.value(value: fakeAuthRepository),
+        Provider<FeedingRepository>.value(value: fakeFeedingRepository),
         ChangeNotifierProvider<FeedingViewModel>.value(value: feedingViewModel),
       ],
       child: const MaterialApp(
@@ -55,6 +72,6 @@ void main() {
     expect(find.text('Date & Time'), findsOneWidget);
 
     // Verify Save button is present
-    expect(find.text('Save Log'), findsOneWidget);
+    expect(find.text('Save Breast Feed'), findsOneWidget);
   });
 }

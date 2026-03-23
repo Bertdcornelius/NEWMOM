@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/vaccine_model.dart';
-import '../../services/supabase_service.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/care_repository.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/premium_ui_components.dart';
 
@@ -26,8 +27,8 @@ class _VaccineScreenState extends State<VaccineScreen> {
   Future<void> _fetchVaccines() async {
     setState(() => _isLoading = true);
 
-    final service = context.read<SupabaseService>();
-    final data = await service.getVaccines();
+    final service = context.read<CareRepository>();
+    final data = (await service.getVaccines()).data ?? [];
     setState(() {
       _vaccines = data.map((e) => Vaccine.fromJson(e)).toList();
       _isLoading = false;
@@ -79,10 +80,12 @@ class _VaccineScreenState extends State<VaccineScreen> {
               onPressed: () async {
                 if (nameController.text.isEmpty) return;
 
-                final service = context.read<SupabaseService>();
-                final user = service.currentUser;
-                if (user == null) return;
-
+                final user = context.read<AuthRepository>().currentUser;
+                if (user == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not logged in'), backgroundColor: Colors.red));
+                  return;
+                }
+                
                 final newVaccine = Vaccine(
                   id: Uuid().v4(),
                   userId: user.id,
@@ -92,9 +95,15 @@ class _VaccineScreenState extends State<VaccineScreen> {
                   createdAt: DateTime.now(),
                 );
 
-                await service.saveVaccine(newVaccine.toJson());
-                _fetchVaccines();
-                Navigator.pop(context);
+                final service = context.read<CareRepository>();
+                final result = await service.saveVaccine(newVaccine.toJson());
+                if (result.isSuccess) {
+                  _fetchVaccines();
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vaccine saved!')));
+                } else if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message ?? 'Failed to save'), backgroundColor: Colors.red));
+                }
               },
               child: Text('Save'),
             ),
@@ -105,7 +114,7 @@ class _VaccineScreenState extends State<VaccineScreen> {
   }
 
   Future<void> _markAsGiven(Vaccine vaccine) async {
-    final service = context.read<SupabaseService>();
+    final service = context.read<CareRepository>();
     await service.updateVaccine(vaccine.id, {
       'status': 'given',
       'given_date': DateTime.now().toIso8601String(),
@@ -114,11 +123,12 @@ class _VaccineScreenState extends State<VaccineScreen> {
   }
 
   Future<void> _deleteVaccine(String id) async {
-    await context.read<SupabaseService>().deleteVaccine(id);
+    await context.read<CareRepository>().deleteVaccine(id);
     _fetchVaccines();
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Deleted')));
+    }
   }
 
   void _showOptions(Vaccine vaccine) {
@@ -183,8 +193,9 @@ class _VaccineScreenState extends State<VaccineScreen> {
                           firstDate: DateTime(2020),
                           lastDate: DateTime(2030),
                         );
-                        if (picked != null)
+                        if (picked != null) {
                           setStateDialog(() => dueDate = picked);
+                        }
                       },
                       child: Text('Pick Date'),
                     )
@@ -220,7 +231,7 @@ class _VaccineScreenState extends State<VaccineScreen> {
                             : vaccine.givenDate?.toIso8601String()),
                   };
                   await context
-                      .read<SupabaseService>()
+                      .read<CareRepository>()
                       .updateVaccine(vaccine.id, updates);
                   _fetchVaccines();
                   Navigator.pop(context);
@@ -320,14 +331,16 @@ class _VaccineScreenState extends State<VaccineScreen> {
                   final isSkipped = vaccine.status == 'skipped';
 
                   Color cardColor = PremiumColors(context).surface;
-                  if (isGiven)
+                  if (isGiven) {
                     cardColor = isDark
                         ? const Color(0xFF1A2E20)
                         : const Color(0xFFF0FDF4); // very soft green
-                  if (isSkipped)
+                  }
+                  if (isSkipped) {
                     cardColor = isDark
                         ? const Color(0xFF2E2015)
                         : const Color(0xFFFFF7ED); // very soft orange
+                  }
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12.0),

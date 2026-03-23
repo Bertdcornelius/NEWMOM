@@ -3,7 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:convert';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/local_storage_service.dart';
+import '../../repositories/auth_repository.dart';
 import '../../widgets/premium_ui_components.dart';
 
 class EmergencyCardScreen extends StatefulWidget {
@@ -39,15 +41,36 @@ class _EmergencyCardScreenState extends State<EmergencyCardScreen> {
     super.dispose();
   }
 
-  void _loadData() {
+  void _loadData() async {
     final ls = context.read<LocalStorageService>();
-    final raw = ls.getString('emergency_card');
-    if (raw != null) _info = Map<String, String>.from(jsonDecode(raw));
+    final auth = context.read<AuthRepository>();
+    
+    // 1. Try to load from Supabase MetaData First
+    final meta = auth.currentUser?.userMetadata?['emergency_card'];
+    if (meta != null && meta is String) {
+        _info = Map<String, String>.from(jsonDecode(meta));
+        // Cache locally
+        ls.saveString('emergency_card', meta);
+    } else {
+        // 2. Fallback to Local Storage
+        final raw = ls.getString('emergency_card');
+        if (raw != null) _info = Map<String, String>.from(jsonDecode(raw));
+    }
     if (mounted) setState(() {});
   }
 
   Future<void> _saveData() async {
-    await context.read<LocalStorageService>().saveString('emergency_card', jsonEncode(_info));
+    final payload = jsonEncode(_info);
+    // Save locally for instant offline access
+    await context.read<LocalStorageService>().saveString('emergency_card', payload);
+    
+    // Sync to Supabase instantly
+    try {
+        final auth = context.read<AuthRepository>();
+        if (auth.currentUser != null) {
+            await auth.updateUser(UserAttributes(data: {'emergency_card': payload}));
+        }
+    } catch (_) {}
   }
 
 

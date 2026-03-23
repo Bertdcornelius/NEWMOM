@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import '../../widgets/premium_ui_components.dart';
 import 'package:provider/provider.dart';
-import '../../services/supabase_service.dart';
+import '../../repositories/auth_repository.dart';
 import '../../services/local_storage_service.dart';
 import 'package:uuid/uuid.dart';
+import 'baby_setup_screen.dart';
+import '../home/dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final bool initialIsLogin;
+  const LoginScreen({super.key, this.initialIsLogin = true});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -16,127 +19,196 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _isLogin = true;
+  late bool _isLogin;
+
+  @override
+  void initState() {
+    super.initState();
+    _isLogin = widget.initialIsLogin;
+  }
 
   Future<void> _submit() async {
     setState(() => _isLoading = true);
-    final authService = context.read<SupabaseService>();
-    final email = _emailController.text;
+    final authService = context.read<AuthRepository>();
+    final email = _emailController.text.trim();
     final password = _passwordController.text;
 
-    try {
-      if (_isLogin) {
-        await authService.signIn(email, password);
-
-        // Device Limit Check
+    if (_isLogin) {
+      final result = await authService.signIn(email, password);
+      if (result.isSuccess) {
         if (mounted) {
-            final prefs = context.read<LocalStorageService>();
-            String? deviceId = prefs.getString('device_id');
-            if (deviceId == null) {
-                deviceId = const Uuid().v4();
-                await prefs.saveString('device_id', deviceId);
-            }
-
-            final allowed = await authService.registerDevice(deviceId);
-            if (!allowed) {
-                await authService.signOut();
-                if (mounted) {
-                    showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                            title: Text('Device Limit Reached'),
-                            content: Text('Maximum of 2 devices allowed. Please upgrade to Premium.'),
-                            actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('OK'))],
-                        ),
-                    );
-                }
-                return;
-            }
+          await _navigateAfterAuth();
         }
       } else {
-        await authService.signUp(email, password);
-        if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Check your email for confirmation link')),
-            );
-        }
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${result.message}')));
       }
-    } catch (e) {
-      if (mounted) {
-        final message = e.toString();
-        // Check for common "Email not confirmed" error strings from Supabase
-        if (message.contains("Email not confirmed") || message.contains("400") || message.toLowerCase().contains("confirm")) {
-             ScaffoldMessenger.of(context).showSnackBar(
+    } else {
+      final result = await authService.signUp(email, password, 'User');
+      if (result.isSuccess) {
+        if (mounted) {
+          if (authService.currentUser != null) {
+            await _navigateAfterAuth();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Login Failed: $e'),
+                content: const Text("Account created! Please check your email to verify your account."),
                 action: SnackBarAction(
                   label: "Resend Email",
                   onPressed: () async {
-                      try {
-                          await authService.resendConfirmationEmail(email);
+                      final resendRes = await authService.resendConfirmationEmail(email);
+                      if (resendRes.isSuccess) {
                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Confirmation email resent!")));
-                      } catch (err) {
-                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error resending: $err")));
+                      } else {
+                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error resending: ${resendRes.message}")));
                       }
                   },
                 ),
                 duration: const Duration(seconds: 10),
               ),
             );
-        } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error: $e')),
-            );
+          }
         }
+      } else {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${result.message}')));
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() => _isLoading = true);
+    final result = await context.read<AuthRepository>().signInWithGoogle();
+    
+    if (result.isSuccess) {
+      if (mounted) {
+         await _navigateAfterAuth();
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Google Sign-In Error: ${result.message}')));
+      }
+    }
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _navigateAfterAuth() async {
+      try {
+        final authRepo = context.read<AuthRepository>();
+        final metaName = authRepo.currentUser?.userMetadata?['baby_name'];
+        final profile = await authRepo.getProfile();
+        
+        final babyName = (metaName != null && metaName.toString().trim().isNotEmpty)
+             ? metaName 
+             : (profile.isSuccess && profile.data != null ? profile.data!['baby_name'] : null);
+        if (babyName != null && babyName.toString().trim().isNotEmpty) {
+           await context.read<LocalStorageService>().saveString('baby_name', babyName.toString());
+           if (mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const DashboardScreen()),
+                (route) => false,
+              );
+           }
+        } else {
+           if (mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const BabySetupScreen()),
+                (route) => false,
+              );
+           }
+        }
+      } catch (e) {
+           // Fallback to baby setup if profile fetch fails
+           if (mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const BabySetupScreen()),
+                (route) => false,
+              );
+           }
+      }
   }
 
   @override
   Widget build(BuildContext context) {
     return PremiumScaffold(
       appBar: AppBar(title: Text(_isLogin ? 'Login' : 'Sign Up')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-              controller: _emailController,
-              decoration: const InputDecoration(labelText: 'Email'),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-              controller: _passwordController,
-              decoration: const InputDecoration(labelText: 'Password'),
-              obscureText: true,
-            ),
-            if (_isLogin)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: _forgotPassword,
-                  child: Text('Forgot Password?'),
+      body: Center(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextField(
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                  controller: _emailController,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  keyboardType: TextInputType.emailAddress,
                 ),
-              ),
-            const SizedBox(height: 24),
-            if (_isLoading)
-              const CircularProgressIndicator()
-            else
-              ElevatedButton(
-                onPressed: _submit,
-                child: Text(_isLogin ? 'Login' : 'Sign Up'),
-              ),
-            TextButton(
-              onPressed: () => setState(() => _isLogin = !_isLogin),
-              child: Text(_isLogin ? 'Create an account' : 'Have an account? Login'),
+                const SizedBox(height: 16),
+                TextField(
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                  controller: _passwordController,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                  obscureText: true,
+                ),
+                if (_isLogin)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _forgotPassword,
+                      child: const Text('Forgot Password?'),
+                    ),
+                  ),
+                const SizedBox(height: 24),
+                if (_isLoading)
+                  const CircularProgressIndicator()
+                else
+                  ElevatedButton(
+                    onPressed: _submit,
+                    child: Text(_isLogin ? 'Login' : 'Sign Up'),
+                  ),
+                TextButton(
+                  onPressed: () => setState(() => _isLogin = !_isLogin),
+                  child: Text(_isLogin ? 'Create an account' : 'Have an account? Login'),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2))),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('OR', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
+                    ),
+                    Expanded(child: Divider(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2))),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : _signInWithGoogle,
+                    icon: Container(
+                      width: 24,
+                      height: 24,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Text('G', style: TextStyle(color: Color(0xFF4285F4), fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                    label: const Text('Continue with Google', style: TextStyle(fontSize: 16)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.onSurface,
+                      side: BorderSide(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -151,7 +223,7 @@ class _LoginScreenState extends State<LoginScreen> {
       
       setState(() => _isLoading = true);
       try {
-          await context.read<SupabaseService>().resetPasswordForEmail(email);
+          await context.read<AuthRepository>().resetPasswordForEmail(email);
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password reset email sent!")));
       } catch (e) {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));

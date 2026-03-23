@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'dart:convert';
-import '../../services/local_storage_service.dart';
+import 'package:uuid/uuid.dart';
+import '../../repositories/care_repository.dart';
+import '../../repositories/auth_repository.dart';
 import '../../widgets/premium_ui_components.dart';
 
 class FoodIntroScreen extends StatefulWidget {
@@ -15,6 +15,7 @@ class FoodIntroScreen extends StatefulWidget {
 class _FoodIntroScreenState extends State<FoodIntroScreen> {
   List<Map<String, dynamic>> _foods = [];
   String _selectedCategory = 'All';
+  bool _isLoading = true;
 
   static const categories = ['All', 'Fruits', 'Veggies', 'Grains', 'Protein', 'Dairy'];
   static const categoryEmojis = {'Fruits': '🍎', 'Veggies': '🥦', 'Grains': '🌾', 'Protein': '🍗', 'Dairy': '🧀'};
@@ -26,28 +27,19 @@ class _FoodIntroScreenState extends State<FoodIntroScreen> {
     _loadData();
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-  void _loadData() {
-    final ls = context.read<LocalStorageService>();
-    final raw = ls.getString('food_intro_list');
-    if (raw != null) _foods = List<Map<String, dynamic>>.from(jsonDecode(raw));
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _saveData() async {
-    final ls = context.read<LocalStorageService>();
-    await ls.saveString('food_intro_list', jsonEncode(_foods));
+  Future<void> _loadData() async {
+    final repo = context.read<CareRepository>();
+    final result = await repo.getFoodIntroductions();
+    if (result.isSuccess && result.data != null) {
+      _foods = result.data!;
+    }
+    if (mounted) setState(() => _isLoading = false);
   }
 
   List<Map<String, dynamic>> get _filteredFoods {
     if (_selectedCategory == 'All') return _foods;
     return _foods.where((f) => f['category'] == _selectedCategory).toList();
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +63,9 @@ class _FoodIntroScreenState extends State<FoodIntroScreen> {
         backgroundColor: colors.sageGreen,
         child: const Icon(Icons.add, color: Colors.white),
       ),
-      body: Column(
+      body: _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
@@ -113,7 +107,7 @@ class _FoodIntroScreenState extends State<FoodIntroScreen> {
                               ),
                               child: Text(
                                 cat == 'All' ? '🍽 All' : '${categoryEmojis[cat] ?? ''} $cat',
-                                style: GoogleFonts.plusJakartaSans(
+                                style: PremiumTypography(context).bodyBold.copyWith(
                                   fontSize: 13,
                                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                                   color: isSelected ? Colors.white : colors.textSecondary,
@@ -176,7 +170,7 @@ class _FoodIntroScreenState extends State<FoodIntroScreen> {
           color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Center(child: Text(label, style: GoogleFonts.plusJakartaSans(
+        child: Center(child: Text(label, style: PremiumTypography(context).bodyBold.copyWith(
           fontSize: 12, fontWeight: FontWeight.w700, color: color,
         ))),
       ),
@@ -283,16 +277,35 @@ class _FoodIntroScreenState extends State<FoodIntroScreen> {
                   label: 'Add Food',
                   icon: Icons.check_circle_outline_rounded,
                   color: PremiumColors(context).sageGreen,
-                  onTap: () {
-                    if (nameC.text.isEmpty) return;
-                    _foods.add({
-                      'name': nameC.text,
+                  onTap: () async {
+                    if (nameC.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a food name')));
+                      return;
+                    }
+
+                    final user = context.read<AuthRepository>().currentUser;
+                    if (user == null) {
+                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not logged in. Please sign in first.'), backgroundColor: Colors.red));
+                      return;
+                    }
+
+                    final newFood = {
+                      'id': const Uuid().v4(),
+                      'user_id': user.id,
+                      'name': nameC.text.trim(),
                       'category': category,
                       'reaction': reaction,
                       'date': DateTime.now().toString().split(' ')[0],
-                    });
-                    _saveData();
-                    Navigator.pop(ctx);
+                      'created_at': DateTime.now().toUtc().toIso8601String(),
+                    };
+
+                    final repo = context.read<CareRepository>();
+                    final result = await repo.saveFoodIntroduction(newFood);
+                    if (!result.isSuccess && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message ?? 'Failed to save'), backgroundColor: Colors.red));
+                    }
+                    
+                    if (ctx.mounted) Navigator.pop(ctx);
                     _loadData();
                   },
                 ),
@@ -316,7 +329,7 @@ class _FoodIntroScreenState extends State<FoodIntroScreen> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: isSelected ? color : Colors.transparent, width: 2),
           ),
-          child: Center(child: Text(label, style: GoogleFonts.plusJakartaSans(
+          child: Center(child: Text(label, style: PremiumTypography(context).bodyBold.copyWith(
             fontSize: 13, fontWeight: FontWeight.w600, color: isSelected ? color : PremiumColors(context).textSecondary,
           ))),
         ),
@@ -332,10 +345,12 @@ class _FoodIntroScreenState extends State<FoodIntroScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           TextButton(
-            onPressed: () {
-              _foods.remove(food);
-              _saveData();
-              Navigator.pop(ctx);
+            onPressed: () async {
+              final id = food['id'];
+              if (id != null) {
+                await context.read<CareRepository>().deleteFoodIntroduction(id);
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
               _loadData();
             },
             child: const Text('Remove', style: TextStyle(color: Colors.red)),

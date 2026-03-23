@@ -5,6 +5,9 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../services/baby_data_repository.dart';
 import '../../widgets/premium_ui_components.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -224,10 +227,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: PremiumActionButton(
-                            label: 'Share Report',
+                            label: 'Share Summary Text',
                             icon: Icons.share_rounded,
                             color: colors.sageGreen,
                             onTap: _shareReport,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // PDF Export Button
+                        SizedBox(
+                          width: double.infinity,
+                          child: PremiumActionButton(
+                            label: 'Export Pediatrician PDF',
+                            icon: Icons.picture_as_pdf_rounded,
+                            color: colors.sereneBlue,
+                            onTap: () => _exportPDF(context),
                           ),
                         ),
 
@@ -283,5 +298,92 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void _shareReport() {
     final text = '📊 $_babyName\'s Weekly Report\n\n${_generateSummary()}\n\n— Sent from Neo Baby Tracker';
     Share.share(text, subject: '$_babyName\'s Weekly Report');
+  }
+
+  Future<void> _exportPDF(BuildContext context) async {
+    final pdf = pw.Document();
+    final now = DateTime.now();
+    final dateStr = DateFormat('MMMM d, yyyy').format(now);
+    final sanitizedName = _babyName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Header(
+                level: 0,
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('$_babyName - Clinical Summary', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+                    pw.Text('NEO', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.grey300)),
+                  ]
+                )
+              ),
+              pw.Text('Generated: $dateStr', style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+              pw.SizedBox(height: 32),
+              
+              pw.Text('7-Day Activity Averages & Totals', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+              pw.SizedBox(height: 12),
+              
+              pw.Container(
+                padding: const pw.EdgeInsets.all(20),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.grey100,
+                  borderRadius: pw.BorderRadius.circular(12),
+                ),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                     _pdfStat('Feeds', '$_feedCount', PdfColors.blue600),
+                     _pdfStat('Sleep', '${_totalSleepHours.toStringAsFixed(1)}h', PdfColors.purple600),
+                     _pdfStat('Diapers', '$_diaperCount', PdfColors.green600),
+                     _pdfStat('Milestones', '$_milestoneCount', PdfColors.orange600),
+                  ]
+                )
+              ),
+              
+              pw.SizedBox(height: 32),
+              pw.Text('Context & Notes', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+              pw.SizedBox(height: 12),
+              pw.Container(
+                  padding: const pw.EdgeInsets.all(16),
+                  decoration: pw.BoxDecoration(border: pw.Border(left: pw.BorderSide(color: PdfColors.blue200, width: 4))),
+                  child: pw.Text(_generateSummary(), style: const pw.TextStyle(fontSize: 14, lineSpacing: 1.5, color: PdfColors.grey800)),
+              ),
+              
+              pw.Spacer(),
+              pw.Divider(color: PdfColors.grey300),
+              pw.SizedBox(height: 8),
+              pw.Row(
+                 mainAxisAlignment: pw.MainAxisAlignment.center,
+                 children: [
+                    pw.Text('Auto-generated clinical report from the Neo Baby Tracker App', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey500)),
+                 ]
+              )
+            ],
+          );
+        },
+      ),
+    );
+
+    await Printing.sharePdf(
+        bytes: await pdf.save(), 
+        filename: '${sanitizedName}_Clinical_Report.pdf'
+    );
+  }
+
+  pw.Widget _pdfStat(String label, String value, PdfColor color) {
+     return pw.Column(
+        children: [
+           pw.Text(value, style: pw.TextStyle(fontSize: 28, fontWeight: pw.FontWeight.bold, color: color)),
+           pw.SizedBox(height: 6),
+           pw.Text(label, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+        ]
+     );
   }
 }

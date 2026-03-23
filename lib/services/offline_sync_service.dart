@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'local_storage_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class OfflineSyncAction {
   final String id;
@@ -56,10 +57,23 @@ class OfflineSyncService extends ChangeNotifier {
   
   static const String _queueKey = 'offline_sync_queue';
   bool _isSyncing = false;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   OfflineSyncService(this._localStorageService) {
     // Attempt sync on startup
     syncPendingActions();
+    
+    // Listen for network restores
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+       for (final result in results) {
+           if (result == ConnectivityResult.mobile || result == ConnectivityResult.wifi) {
+               if (kDebugMode) debugPrint("Network restored. Syncing offline queue...");
+               syncPendingActions();
+               break;
+           }
+       }
+    });
+
     // Retry every 30 seconds so queued actions sync when connectivity returns
     _retryTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       syncPendingActions();
@@ -68,6 +82,7 @@ class OfflineSyncService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _connectivitySubscription?.cancel();
     _retryTimer?.cancel();
     super.dispose();
   }

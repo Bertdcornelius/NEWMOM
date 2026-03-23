@@ -2,40 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:new_mom_tracker/screens/auth/login_screen.dart';
-import 'package:new_mom_tracker/services/auth_repository.dart';
-import 'package:new_mom_tracker/services/baby_data_repository.dart';
+import 'package:new_mom_tracker/repositories/auth_repository.dart';
 import 'package:new_mom_tracker/services/local_storage_service.dart';
 import 'package:new_mom_tracker/providers/theme_provider.dart';
+import 'package:new_mom_tracker/core/result.dart';
 
-// Create fake classes to avoid Mockito null-safety code generation requirements
-class FakeAuthRepository extends Fake with ChangeNotifier implements AuthRepository {
+class FakeAuthRepository extends Fake implements AuthRepository {
   @override
-  Future<void> signIn(String email, String password) async {}
-  @override
-  Future<void> signUp(String email, String password) async {}
-}
-
-class FakeBabyDataRepository extends Fake with ChangeNotifier implements BabyDataRepository {
-  @override
-  Future<bool> registerDevice(String deviceId) async => true;
+  Future<Result<Map<String, dynamic>>> signIn(String email, String password) async {
+    if (email.isEmpty || password.isEmpty) return Failure('Empty fields');
+    return Success({});
+  }
 }
 
 class FakeLocalStorageService extends Fake implements LocalStorageService {
   @override
-  String? getString(String key) {
-    if (key == 'device_id') return 'dummy-device-id';
-    return null;
-  }
+  String? getString(String key) => null;
 }
 
 void main() {
   late FakeAuthRepository fakeAuthRepository;
-  late FakeBabyDataRepository fakeBabyDataRepository;
   late FakeLocalStorageService fakeLocalStorageService;
 
   setUp(() {
     fakeAuthRepository = FakeAuthRepository();
-    fakeBabyDataRepository = FakeBabyDataRepository();
     fakeLocalStorageService = FakeLocalStorageService();
   });
 
@@ -43,8 +33,7 @@ void main() {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<ThemeProvider>(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider<AuthRepository>.value(value: fakeAuthRepository),
-        ChangeNotifierProvider<BabyDataRepository>.value(value: fakeBabyDataRepository),
+        Provider<AuthRepository>.value(value: fakeAuthRepository),
         Provider<LocalStorageService>.value(value: fakeLocalStorageService),
       ],
       child: const MaterialApp(
@@ -60,18 +49,26 @@ void main() {
     // Verify UI holds email and password text fields
     expect(find.text('Email'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
-    expect(find.text('Sign In'), findsOneWidget);
-    expect(find.text('Welcome\nBack'), findsOneWidget);
+    
+    // There are two "Login" texts: AppBar and Button
+    expect(find.text('Login'), findsWidgets);
+    
+    // Verify Google sign in
+    expect(find.text('Continue with Google'), findsOneWidget);
   });
 
-  testWidgets('LoginScreen validation shows error when empty', (WidgetTester tester) async {
+  testWidgets('LoginScreen calls sign in with failure gracefully', (WidgetTester tester) async {
     await tester.pumpWidget(createLoginScreen());
     await tester.pumpAndSettle();
 
     // Tap the submit button without filling fields
-    await tester.tap(find.text('Sign In').first);
-    await tester.pump(); // trigger snackbar
+    // There are multiple Login texts (AppBar, ElevatedButton) so we find by Widget type and text
+    final loginButtonFinder = find.widgetWithText(ElevatedButton, 'Login');
+    await tester.tap(loginButtonFinder);
+    await tester.pump(); // trigger
+    await tester.pumpAndSettle();
 
-    expect(find.text('Please fill in all fields'), findsOneWidget);
+    // Our fake returns "Empty fields" failure message
+    expect(find.textContaining('Error: Empty fields'), findsOneWidget);
   });
 }

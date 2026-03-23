@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 // Conditional import - only use notifications on non-web platforms
 import 'notification_service_stub.dart'

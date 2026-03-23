@@ -4,8 +4,10 @@ import 'package:uuid/uuid.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 import '../../models/prescription_model.dart';
-import '../../services/supabase_service.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/care_repository.dart';
 import '../../widgets/premium_ui_components.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PrescriptionScreen extends StatefulWidget {
   const PrescriptionScreen({super.key});
@@ -27,8 +29,8 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   Future<void> _fetchItems() async {
     setState(() => _isLoading = true);
 
-    final service = context.read<SupabaseService>();
-    final data = await service.getPrescriptions();
+    final service = context.read<CareRepository>();
+    final data = (await service.getPrescriptions()).data ?? [];
     setState(() {
       _items = data.map((e) => Prescription.fromJson(e)).toList();
       _isLoading = false;
@@ -73,8 +75,8 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
                         style: const TextStyle(color: Colors.green)),
                   TextButton.icon(
                     onPressed: () async {
-                      final service = context.read<SupabaseService>();
-                      final isPremium = await service.isPremiumUser();
+                      final authService = context.read<AuthRepository>();
+                      final isPremium = await authService.isPremiumUser();
 
                       if (!isPremium) {
                         if (context.mounted) {
@@ -117,28 +119,45 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
                 onPressed: isValuesSaving
                     ? null
                     : () async {
-                        if (nameController.text.isEmpty) return;
+                        final name = nameController.text.trim();
+                        final dosage = dosageController.text.trim();
+                        final freq = freqController.text.trim();
+
+                        if (name.isEmpty) {
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Medicine name is required.')));
+                            return;
+                        }
+                        
+                        if (name.length > 100 || dosage.length > 50 || freq.length > 50) {
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Text inputs exceed max length.')));
+                            return;
+                        }
 
                         setStateDialog(
                             () => isValuesSaving = true); // Lock button
 
                         try {
-                          final service = context.read<SupabaseService>();
-                          final user = service.currentUser;
-                          if (user == null) return;
+                          final service = context.read<CareRepository>();
+                          final authService = context.read<AuthRepository>();
+                          final user = authService.currentUser;
+                          if (user == null) {
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not logged in. Please sign in first.'), backgroundColor: Colors.red));
+                            return;
+                          }
 
                           String? imageUrl;
                           if (imageBytes != null && imageName != null) {
-                            imageUrl = await service.uploadImage(
+                            final res = await service.uploadImage(
                                 user.id, imageName!, imageBytes!);
+                            imageUrl = res.data;
                           }
 
                           final newItem = Prescription(
                             id: Uuid().v4(),
                             userId: user.id,
-                            medicineName: nameController.text,
-                            dosage: dosageController.text,
-                            frequency: freqController.text,
+                            medicineName: name,
+                            dosage: dosage,
+                            frequency: freq,
                             imageUrl: imageUrl,
                             createdAt: DateTime.now().toUtc(), // Fix Timezone
                           );
@@ -169,17 +188,22 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        child: Image.network(url),
+        child: CachedNetworkImage(
+            imageUrl: url, 
+            placeholder: (context, url) => const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
+            errorWidget: (context, url, error) => const SizedBox(height: 200, child: Icon(Icons.broken_image, size: 48)),
+        ),
       ),
     );
   }
 
   Future<void> _deletePrescription(String id) async {
-    await context.read<SupabaseService>().deletePrescription(id);
+    await context.read<CareRepository>().deletePrescription(id);
     _fetchItems();
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Deleted')));
+    }
   }
 
   void _showOptions(Prescription item) {
@@ -252,7 +276,7 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
                   'frequency': freqController.text,
                 };
                 await context
-                    .read<SupabaseService>()
+                    .read<CareRepository>()
                     .updatePrescription(item.id, updates);
                 _fetchItems();
                 Navigator.pop(context);

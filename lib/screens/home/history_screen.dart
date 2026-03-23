@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import '../../services/supabase_service.dart';
+import '../../repositories/feeding_repository.dart';
+import '../../repositories/sleep_repository.dart';
+import '../../repositories/care_repository.dart';
 import '../../widgets/premium_ui_components.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -12,23 +14,44 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
+  final ScrollController _scrollController = ScrollController();
   bool _isLoading = true;
+  bool _isFetchingMore = false;
+  int _currentLimit = 50;
   Map<String, List<Map<String, dynamic>>> _groupedLogs = {};
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadData();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 && !_isLoading && !_isFetchingMore) {
+      _loadMore();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
-    final service = context.read<SupabaseService>();
-    final feeds = await service.getFeeds();
-    final sleeps = await service.getSleepLogs();
-    final diapers = await service.getDiaperLogs();
+    final feedsRepo = context.read<FeedingRepository>();
+    final sleepRepo = context.read<SleepRepository>();
+    final careRepo = context.read<CareRepository>();
     
+    final feeds = (await feedsRepo.getFeeds(limit: _currentLimit)).data ?? [];
+    final sleeps = (await sleepRepo.getSleepLogs(limit: _currentLimit)).data ?? [];
+    final pumps = (await careRepo.getPumpingSessions(limit: _currentLimit)).data ?? [];
+    final tummyTimes = (await careRepo.getTummyTimeSessions(limit: _currentLimit)).data ?? [];
+    final diapers = (await careRepo.getDiaperLogs(limit: _currentLimit)).data ?? [];
+
     // 1. Unify and Tag
     final List<Map<String, dynamic>> allLogs = [];
     
@@ -61,6 +84,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
       allLogs.add(item);
     }
 
+    for (var p in pumps) {
+      final Map<String, dynamic> item = Map.from(p);
+      item['data_type'] = 'pump';
+      var tsStr = p['timestamp'].toString();
+      if (!tsStr.endsWith('Z') && !tsStr.contains('+')) tsStr += 'Z';
+      item['sort_time'] = DateTime.parse(tsStr).toLocal();
+      allLogs.add(item);
+    }
+
+    for (var t in tummyTimes) {
+      final Map<String, dynamic> item = Map.from(t);
+      item['data_type'] = 'tummy_time';
+      var tsStr = t['timestamp'].toString();
+      if (!tsStr.endsWith('Z') && !tsStr.contains('+')) tsStr += 'Z';
+      item['sort_time'] = DateTime.parse(tsStr).toLocal();
+      allLogs.add(item);
+    }
+
     // 2. Sort Descending
     allLogs.sort((a, b) => b['sort_time'].compareTo(a['sort_time']));
 
@@ -79,18 +120,34 @@ class _HistoryScreenState extends State<HistoryScreen> {
       setState(() {
         _groupedLogs = grouped;
         _isLoading = false;
+        _isFetchingMore = false;
       });
     }
   }
 
+  Future<void> _loadMore() async {
+    setState(() {
+      _isFetchingMore = true;
+      _currentLimit += 50;
+    });
+    await _loadData();
+  }
+
   Future<void> _deleteItem(String id, String type) async {
-      final service = context.read<SupabaseService>();
+      final feedRepo = context.read<FeedingRepository>();
+      final sleepRepo = context.read<SleepRepository>();
+      final careRepo = context.read<CareRepository>();
+      
       if (type == 'feed') {
-          await service.deleteFeed(id);
+          await feedRepo.deleteFeed(id);
       } else if (type == 'sleep') {
-          await service.deleteSleepLog(id);
+          await sleepRepo.deleteSleepLog(id);
       } else if (type == 'diaper') {
-          await service.deleteDiaperLog(id);
+          await careRepo.deleteDiaperLog(id);
+      } else if (type == 'pump') {
+          await careRepo.deletePumpingSession(id);
+      } else if (type == 'tummy_time') {
+          await careRepo.deleteTummyTimeSession(id);
       }
       _loadData(); // This should trigger a refresh
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleted")));
@@ -100,16 +157,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
       showDialog(
           context: context,
           builder: (context) => AlertDialog(
-              title: Text("Delete Entry"),
-              content: Text("Are you sure?"),
+              backgroundColor: PremiumColors(context).surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Text("Delete Entry", style: PremiumTypography(context).h2),
+              content: Text("Are you sure? This cannot be undone.", style: PremiumTypography(context).body),
               actions: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel")),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text("Cancel", style: PremiumTypography(context).bodyBold.copyWith(color: PremiumColors(context).textSecondary)),
+                  ),
                   TextButton(
                       onPressed: () {
                           Navigator.pop(context);
                           _deleteItem(id, type);
                       }, 
-                      child: Text("Delete", style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.redAccent : Colors.red))
+                      child: Text("Delete", style: PremiumTypography(context).bodyBold.copyWith(color: PremiumColors(context).warmPeach)),
                   ),
               ],
           ),
@@ -133,7 +195,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       body: _isLoading 
         ? Center(child: CircularProgressIndicator())
         : sortedKeys.isEmpty 
-          ? Center(child: Text("No history logs found.", style: PremiumTypography(context).body))
+          ? _buildEmptyState()
           : TweenAnimationBuilder<double>(
               tween: Tween(begin: 0.0, end: 1.0),
               duration: const Duration(milliseconds: 400),
@@ -148,27 +210,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 );
               },
               child: ListView.builder(
+                controller: _scrollController,
                 padding: const EdgeInsets.all(16),
-                itemCount: sortedKeys.length,
+                itemCount: sortedKeys.length + (_isFetchingMore ? 1 : 0),
                 itemBuilder: (context, index) {
-                    final dateKey = sortedKeys[index];
+                  if (index == sortedKeys.length) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24.0),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  
+                  final dateKey = sortedKeys[index];
                   final logs = _groupedLogs[dateKey]!;
                   final dateTitle = DateFormat('EEEE, MMM d, y').format(DateTime.parse(dateKey));
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: PremiumColors(context).surface,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: isDark ? [] : [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        )
-                      ]
-                    ),
-                    child: ExpansionTile(
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: PremiumCard(
+                      child: ExpansionTile(
                       initiallyExpanded: index == 0, // Expand today/first day by default
                       shape: const Border(), // Remove default borders
                       title: Text(dateTitle, style: PremiumTypography(context).title),
@@ -179,6 +239,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         child: _buildLogTile(log),
                       )).toList(),
                    ),
+                  ),
                   );
                 },
               ),
@@ -242,6 +303,50 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ],
             ),
          );
+      } else if (dataType == 'pump') {
+          final amount = log['amount_ml'];
+          return DataTile(
+            onTap: () => _showOptions(log),
+            backgroundColor: PremiumColors(context).surfaceMuted,
+            child: Row(
+              children: [
+                PremiumBubbleIcon(icon: Icons.water_drop_rounded, color: PremiumColors(context).gentlePurple, size: 22, padding: 10),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("PUMPING - ${DateFormat('h:mm a').format(time)}", style: PremiumTypography(context).bodyBold),
+                      const SizedBox(height: 2),
+                      Text("$amount ml pumped", style: PremiumTypography(context).caption),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+      } else if (dataType == 'tummy_time') {
+          final duration = log['duration_seconds'] ?? 0;
+          return DataTile(
+            onTap: () => _showOptions(log),
+            backgroundColor: PremiumColors(context).surfaceMuted,
+            child: Row(
+              children: [
+                PremiumBubbleIcon(icon: Icons.timer_rounded, color: PremiumColors(context).softAmber, size: 22, padding: 10),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("TUMMY TIME - ${DateFormat('h:mm a').format(time)}", style: PremiumTypography(context).bodyBold),
+                      const SizedBox(height: 2),
+                      Text("${(duration / 60).floor()}m ${duration % 60}s session", style: PremiumTypography(context).caption),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
       } else {
          final type = log['type']; 
          String emoji = "❓";
@@ -279,13 +384,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
       
       showModalBottomSheet(
           context: context,
-          builder: (context) => SafeArea(
+          backgroundColor: Colors.transparent,
+          builder: (context) => Container(
+            decoration: BoxDecoration(
+              color: PremiumColors(context).surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: SafeArea(
               child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                      Center(child: Container(
+                        width: 48, height: 6,
+                        decoration: BoxDecoration(color: PremiumColors(context).textMuted, borderRadius: BorderRadius.circular(3)),
+                        margin: const EdgeInsets.only(bottom: 16),
+                      )),
                       ListTile(
-                          leading: Icon(Icons.edit, color: Colors.blue),
-                          title: Text('Edit'),
+                          leading: PremiumBubbleIcon(icon: Icons.edit_rounded, color: PremiumColors(context).sereneBlue, size: 20, padding: 10),
+                          title: Text('Edit', style: PremiumTypography(context).title),
                           onTap: () {
                               Navigator.pop(context);
                               if (type == 'feed') {
@@ -298,8 +415,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           },
                       ),
                       ListTile(
-                          leading: Icon(Icons.delete, color: Colors.red),
-                          title: Text('Delete'),
+                          leading: PremiumBubbleIcon(icon: Icons.delete_rounded, color: PremiumColors(context).warmPeach, size: 20, padding: 10),
+                          title: Text('Delete', style: PremiumTypography(context).title.copyWith(color: PremiumColors(context).warmPeach)),
                           onTap: () {
                               Navigator.pop(context);
                               _confirmDelete(id, type);
@@ -307,6 +424,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                   ],
               ),
+            ),
           ),
       );
   }
@@ -358,7 +476,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   updates['amount_ml'] = int.tryParse(amountController.text);
                               }
 
-                              await context.read<SupabaseService>().updateFeed(log['id'], updates);
+                              await context.read<FeedingRepository>().updateFeed(log['id'], updates);
                               _loadData();
                               Navigator.pop(context);
                           }, 
@@ -443,7 +561,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   'start_time': startTime.toUtc().toIso8601String(),
                                   'end_time': endTime?.toUtc().toIso8601String(),
                               };
-                              await context.read<SupabaseService>().updateSleepLog(log['id'], updates);
+                              await context.read<SleepRepository>().updateSleepLog(log['id'], updates);
                               _loadData();
                               Navigator.pop(context);
                           }, 
@@ -492,7 +610,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cannot save future date!")));
                                   return;
                               }
-                              await context.read<SupabaseService>().updateDiaperLog(log['id'], {
+                              await context.read<CareRepository>().updateDiaperLog(log['id'], {
                                   'created_at': selectedDate.toUtc().toIso8601String(),
                                   'type': type
                               });
@@ -537,17 +655,72 @@ class _HistoryScreenState extends State<HistoryScreen> {
       );
   }
 
+  Widget _buildEmptyState() {
+    return Center(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) => Opacity(
+          opacity: value,
+          child: Transform.scale(scale: 0.85 + 0.15 * value, child: child),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: PremiumColors(context).sereneBlue.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.history_rounded, size: 56, color: PremiumColors(context).sereneBlue),
+              ),
+              const SizedBox(height: 28),
+              Text("No history yet", style: PremiumTypography(context).h2),
+              const SizedBox(height: 12),
+              Text(
+                "Start tracking from the Home screen.\nAll your baby's activities will\nappear here as a timeline.",
+                style: PremiumTypography(context).body,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              PremiumActionButton(
+                label: 'Go to Home',
+                icon: Icons.home_rounded,
+                color: PremiumColors(context).sereneBlue,
+                onTap: () {
+                  // Navigate back to home tab
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTypeChip(String label, String value, String current, Function(String) onSelect) {
       final isSelected = value == current;
       return GestureDetector(
           onTap: () => onSelect(value),
-          child: Container(
+          child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                  color: isSelected ? Colors.blue : Colors.grey[200],
+                  color: isSelected ? PremiumColors(context).sereneBlue : PremiumColors(context).surfaceMuted,
                   borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected ? PremiumColors(context).sereneBlue : PremiumColors(context).textMuted,
+                    width: 1,
+                  ),
               ),
-              child: Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.black)),
+              child: Text(label, style: PremiumTypography(context).bodyBold.copyWith(
+                color: isSelected ? Colors.white : PremiumColors(context).textPrimary,
+              )),
           ),
       );
   }

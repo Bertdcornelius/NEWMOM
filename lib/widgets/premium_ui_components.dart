@@ -30,8 +30,8 @@ class PremiumColors {
 
   // Typography
   Color get textPrimary => isDark ? const Color(0xFFE0E0E0) : const Color(0xFF2B2D42);
-  Color get textSecondary => isDark ? Colors.white.withOpacity(0.60) : const Color(0xFF8D99AE);
-  Color get textMuted => isDark ? Colors.white.withOpacity(0.38) : const Color(0xFFC0C4CC);
+  Color get textSecondary => isDark ? Colors.white.withValues(alpha: 0.60) : const Color(0xFF8D99AE);
+  Color get textMuted => isDark ? Colors.white.withValues(alpha: 0.38) : const Color(0xFFC0C4CC);
 }
 
 class PremiumTypography {
@@ -91,12 +91,12 @@ class PremiumCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
 
   const PremiumCard({
-    Key? key,
+    super.key,
     required this.child,
     this.width,
     this.height,
     this.padding = const EdgeInsets.all(16.0),
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +107,7 @@ class PremiumCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: isDark ? [] : [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 30,
             offset: const Offset(0, 10),
           )
@@ -123,13 +123,13 @@ class PremiumCard extends StatelessWidget {
             padding: padding,
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : Colors.white.withOpacity(0.4),
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.white.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withOpacity(0.15)
-                    : Colors.white.withOpacity(0.6),
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : Colors.white.withValues(alpha: 0.6),
                 width: 1.5,
               ),
             ),
@@ -164,7 +164,7 @@ class PremiumBubbleIcon extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15), // Soft bubble background
+        color: color.withValues(alpha: 0.15), // Soft bubble background
         shape: BoxShape.circle,
       ),
       child: Icon(
@@ -206,7 +206,7 @@ class PremiumActionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(100),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.25),
+              color: color.withValues(alpha: 0.25),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -220,12 +220,15 @@ class PremiumActionButton extends StatelessWidget {
               Icon(icon, color: Colors.white, size: 20),
               const SizedBox(width: 8),
             ],
-            Text(
-              label,
-              style: GoogleFonts.plusJakartaSans(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
+            Flexible(
+              child: Text(
+                label,
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -265,7 +268,7 @@ class DataTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: isDark ? [] : [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 20,
               offset: const Offset(0, 8),
             )
@@ -280,15 +283,15 @@ class DataTile extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isDark ? Colors.white.withOpacity(0.15) : Colors.white.withOpacity(0.5), 
+                  color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.5), 
                   width: 1.5,
                 ),
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: isDark 
-                      ? [Colors.white.withOpacity(0.15), Colors.white.withOpacity(0.02)]
-                      : [Colors.white.withOpacity(0.6), Colors.white.withOpacity(0.1)],
+                      ? [Colors.white.withValues(alpha: 0.15), Colors.white.withValues(alpha: 0.02)]
+                      : [Colors.white.withValues(alpha: 0.6), Colors.white.withValues(alpha: 0.1)],
                 ),
               ),
               child: child,
@@ -305,7 +308,7 @@ class DataTile extends StatelessWidget {
 /// =========================================================
 class PremiumBackground extends StatelessWidget {
   final Widget child;
-  const PremiumBackground({Key? key, required this.child}) : super(key: key);
+  const PremiumBackground({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -355,15 +358,17 @@ class PremiumScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: appBar,
-      bottomNavigationBar: bottomNavigationBar,
-      floatingActionButton: floatingActionButton,
-      floatingActionButtonLocation: floatingActionButtonLocation,
-      extendBody: extendBody,
-      extendBodyBehindAppBar: extendBodyBehindAppBar,
-      body: body != null ? PremiumBackground(child: body!) : null,
+    return PremiumBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: appBar,
+        bottomNavigationBar: bottomNavigationBar,
+        floatingActionButton: floatingActionButton,
+        floatingActionButtonLocation: floatingActionButtonLocation,
+        extendBody: extendBody,
+        extendBodyBehindAppBar: extendBodyBehindAppBar,
+        body: body,
+      ),
     );
   }
 }

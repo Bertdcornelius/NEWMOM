@@ -3,6 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'dart:io';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
 import '../../services/baby_data_repository.dart';
 import '../../widgets/premium_ui_components.dart';
 
@@ -229,9 +233,31 @@ class _DataExportScreenState extends State<DataExportScreen> {
     );
   }
 
-  void _shareExport() {
+  Future<void> _shareExport() async {
     if (_exportPreview != null) {
-      Share.share(_exportPreview!, subject: 'Neo Baby Tracker - Data Export');
+      try {
+        final pdf = pw.Document();
+        pdf.addPage(
+          pw.MultiPage(
+            build: (pw.Context context) {
+              return [
+                pw.Text(
+                  _exportPreview!,
+                  style: pw.TextStyle(font: pw.Font.courier(), fontSize: 10),
+                ),
+              ];
+            },
+          ),
+        );
+        
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/neo_export_${DateTime.now().millisecondsSinceEpoch}.pdf');
+        await file.writeAsBytes(await pdf.save());
+        
+        Share.shareXFiles([XFile(file.path)], subject: 'Neo Baby Tracker - Data Export PDF');
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to generate PDF')));
+      }
     }
   }
 }

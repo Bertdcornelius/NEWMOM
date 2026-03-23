@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/milestone_model.dart';
-import '../../services/supabase_service.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/care_repository.dart';
+import '../../core/result.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/premium_ui_components.dart';
 
@@ -38,8 +40,8 @@ class _MilestonesScreenState extends State<MilestonesScreen> {
   Future<void> _fetchMilestones() async {
     setState(() => _isLoading = true);
 
-    final service = context.read<SupabaseService>();
-    final data = await service.getMilestones();
+    final service = context.read<CareRepository>();
+    final data = (await service.getMilestones()).data ?? [];
 
     if (mounted) {
       setState(() {
@@ -72,8 +74,16 @@ class _MilestonesScreenState extends State<MilestonesScreen> {
               children: [
                 TextField(
                   controller: titleController,
-                  decoration:
-                      const InputDecoration(labelText: 'Milestone Title'),
+                  decoration: InputDecoration(
+                    labelText: 'Milestone Title',
+                    labelStyle: PremiumTypography(context).body,
+                    filled: true,
+                    fillColor: PremiumColors(context).surfaceMuted,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Center(
@@ -135,23 +145,25 @@ class _MilestonesScreenState extends State<MilestonesScreen> {
                                 source: ImageSource.gallery);
                             if (image != null) {
                               // Upload image
-                              final service = context.read<SupabaseService>();
-                              final user = service.currentUser;
+                              final service = context.read<CareRepository>();
+                              final authService = context.read<AuthRepository>();
+                              final user = authService.currentUser;
                               if (user != null) {
                                 final bytes = await image.readAsBytes();
-                                final url = await service.uploadImage(
+                                final uploadRes = await service.uploadImage(
                                     user.id, image.name, bytes);
-                                if (url != null) {
-                                  setDialogState(() => selectedImageUrl = url);
+                                if (uploadRes is Success) {
+                                  setDialogState(() => selectedImageUrl = uploadRes.data);
                                 }
                               }
                             }
                           } catch (e) {
-                            if (context.mounted)
+                            if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                       content:
                                           Text('Failed to pick/upload photo')));
+                            }
                           } finally {
                             setDialogState(() => isUploadingPhoto = false);
                           }
@@ -199,9 +211,23 @@ class _MilestonesScreenState extends State<MilestonesScreen> {
               onPressed: isSaving
                   ? null
                   : () async {
-                      final authService = context.read<SupabaseService>();
+                      final authService = context.read<AuthRepository>();
+                      final repo = context.read<CareRepository>();
                       final user = authService.currentUser;
-                      if (user == null) return;
+                      if (user == null) {
+                        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not logged in. Please sign in first.'), backgroundColor: Colors.red));
+                        return;
+                      }
+
+                      final titleStr = titleController.text.trim();
+                      if (titleStr.isEmpty) {
+                        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a milestone title.')));
+                        return;
+                      }
+                      if (titleStr.length > 50) {
+                        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Title cannot exceed 50 characters.')));
+                        return;
+                      }
 
                       setDialogState(() => isSaving = true);
 
@@ -209,29 +235,29 @@ class _MilestonesScreenState extends State<MilestonesScreen> {
                         final newItem = Milestone(
                           id: const Uuid().v4(),
                           userId: user.id,
-                          title: titleController.text.isEmpty
-                              ? 'New Milestone'
-                              : titleController.text,
+                          title: titleStr,
                           date: selectedDate,
                           imageUrl: selectedImageUrl,
                           createdAt: DateTime.now(),
                         );
 
-                        await authService.saveMilestone(newItem.toJson());
+                        await repo.saveMilestone(newItem.toJson());
 
                         if (mounted) {
                           await _fetchMilestones();
                           Navigator.pop(context);
                         }
                       } catch (e) {
-                        print('ERROR SAVING MILESTONE: $e');
+                        // Suppress print in production
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Error saving: $e')),
                           );
                         }
                       } finally {
-                        if (mounted) setDialogState(() => isSaving = false);
+                        if (mounted) {
+                          setDialogState(() => isSaving = false);
+                        }
                       }
                     },
               child: isSaving
@@ -275,13 +301,14 @@ class _MilestonesScreenState extends State<MilestonesScreen> {
   }
 
   Future<void> _deleteMilestone(String id) async {
-    await context.read<SupabaseService>().deleteMilestone(id);
+    await context.read<CareRepository>().deleteMilestone(id);
     setState(() {
       _milestones.removeWhere((item) => item.id == id);
     });
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Deleted')));
+    }
   }
 
   void _showOptions(Milestone item) {
@@ -397,15 +424,15 @@ class _MilestonesScreenState extends State<MilestonesScreen> {
                         color: PremiumColors(context).textSecondary))),
             TextButton(
               onPressed: () async {
-                final authService = context.read<SupabaseService>();
+                final repo = context.read<CareRepository>();
                 if (titleController.text.isNotEmpty) {
                   final updates = {
                     'title': titleController.text,
                     'date': selectedDate.toIso8601String(),
                   };
-                  await authService.updateMilestone(item.id, updates);
+                  await repo.updateMilestone(item.id, updates);
 
-                  if (mounted) {
+                  if (context.mounted) {
                     await _fetchMilestones();
                     Navigator.pop(context);
                   }
@@ -480,7 +507,7 @@ class _MilestonesScreenState extends State<MilestonesScreen> {
   Widget build(BuildContext context) {
     return PremiumScaffold(
       appBar: AppBar(
-        title: Text('Milestones', style: PremiumTypography(context).h2),
+        title: const Hero(tag: 'milestones_title', child: Text('Milestones')),
         backgroundColor: PremiumColors(context).surface,
         elevation: 0,
         centerTitle: true,
@@ -491,62 +518,145 @@ class _MilestonesScreenState extends State<MilestonesScreen> {
                   color: PremiumColors(context).textSecondary))
         ],
       ),
-      body: _isLoading
-          ? Center(
-              child: CircularProgressIndicator(
-                  color: PremiumColors(context).softAmber))
-          : TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, child) {
-                return Transform.translate(
-                  offset: Offset(0, 20 * (1 - value)),
-                  child: Opacity(
-                    opacity: value,
-                    child: child,
-                  ),
-                );
-              },
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _milestones.length,
-                itemBuilder: (context, index) {
-                  final item = _milestones[index];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: DataTile(
-                      onTap: () => _showOptions(item),
-                      backgroundColor: PremiumColors(context).surface,
-                      child: Row(
-                        children: [
-                          PremiumBubbleIcon(
-                              icon: Icons.star_rounded,
-                              color: PremiumColors(context).softAmber,
-                              size: 24,
-                              padding: 12),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item.title,
-                                    style: PremiumTypography(context).title),
-                                const SizedBox(height: 4),
-                                Text(_formatDate(item.date),
-                                    style: PremiumTypography(context).body,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                              ],
-                            ),
-                          )
-                        ],
+      body: Hero(
+        tag: 'milestones_card',
+        child: Material(
+          color: Colors.transparent,
+          child: _isLoading
+              ? Center(
+                  child: CircularProgressIndicator(
+                      color: PremiumColors(context).softAmber))
+              : TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: Opacity(
+                        opacity: value,
+                        child: child,
                       ),
-                    ),
-                  );
-                },
-              ),
-            ),
+                    );
+                  },
+                  child: _milestones.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.photo_library_rounded, size: 80, color: PremiumColors(context).surfaceMuted),
+                              const SizedBox(height: 16),
+                              Text("No Milestones Yet", style: PremiumTypography(context).h2),
+                              const SizedBox(height: 8),
+                              Text("Tap + to add your first memory", style: PremiumTypography(context).body),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.only(top: 16, left: 24, right: 24, bottom: 100),
+                          itemCount: _milestones.length,
+                          itemBuilder: (context, index) {
+                            final item = _milestones[index];
+                            final hasImage = item.imageUrl != null && item.imageUrl!.isNotEmpty;
+                            
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 24.0),
+                              child: GestureDetector(
+                                onTap: () => _showOptions(item),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: PremiumColors(context).surface,
+                                    borderRadius: BorderRadius.circular(28),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.05),
+                                        blurRadius: 24,
+                                        offset: const Offset(0, 12),
+                                      ),
+                                    ],
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (hasImage)
+                                        AspectRatio(
+                                          aspectRatio: 4 / 3,
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              Image.network(
+                                                item.imageUrl!,
+                                                fit: BoxFit.cover,
+                                                loadingBuilder: (context, child, progress) {
+                                                  if (progress == null) return child;
+                                                  return Center(child: CircularProgressIndicator(color: PremiumColors(context).softAmber));
+                                                },
+                                                errorBuilder: (context, error, stackTrace) => Container(color: PremiumColors(context).surfaceMuted, child: const Icon(Icons.broken_image_rounded)),
+                                              ),
+                                              Positioned.fill(
+                                                child: DecoratedBox(
+                                                    decoration: BoxDecoration(
+                                                      gradient: LinearGradient(
+                                                        begin: Alignment.topCenter,
+                                                        end: Alignment.bottomCenter,
+                                                        colors: [Colors.transparent, Colors.black.withValues(alpha: 0.6)],
+                                                        stops: const [0.6, 1.0],
+                                                      ),
+                                                    ),
+                                                ),
+                                              ),
+                                              Positioned(
+                                                bottom: 16,
+                                                left: 20,
+                                                child: Row(
+                                                  children: [
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                      decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(16)),
+                                                      child: Text(_formatDate(item.date), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      Padding(
+                                        padding: const EdgeInsets.all(20),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                          children: [
+                                            if (!hasImage) ...[
+                                              PremiumBubbleIcon(icon: Icons.star_rounded, color: PremiumColors(context).softAmber, size: 28, padding: 14),
+                                              const SizedBox(width: 16),
+                                            ],
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(item.title, style: PremiumTypography(context).h2.copyWith(fontSize: 22)),
+                                                  if (!hasImage) ...[
+                                                      const SizedBox(height: 4),
+                                                      Text(_formatDate(item.date), style: PremiumTypography(context).body, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                            Icon(Icons.more_horiz_rounded, color: PremiumColors(context).textSecondary),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addMilestone,
         backgroundColor: PremiumColors(context).softAmber,

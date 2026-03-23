@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../widgets/premium_ui_components.dart';
 import 'package:provider/provider.dart';
-import '../../services/supabase_service.dart';
+import '../../repositories/auth_repository.dart';
 import '../../services/local_storage_service.dart';
 import 'login_screen.dart';
+import 'baby_setup_screen.dart';
 import '../home/dashboard_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
@@ -18,26 +19,97 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   Future<void> _continueAsGuest() async {
     setState(() => _isLoading = true);
-    try {
-      await context.read<SupabaseService>().signInAnonymously();
+    
+    final result = await context.read<AuthRepository>().signInAnonymously();
+    if (result.isSuccess) {
       await context.read<LocalStorageService>().saveString('guest_mode', 'true');
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          MaterialPageRoute(builder: (_) => const BabySetupScreen()),
         );
       }
-    } catch (e) {
+    } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Guest Mode Failed: ${e.toString()}\nMake sure "Enable Anonymous Sign-ins" is ON in Supabase Auth Settings.'),
+            content: Text('Guest Mode Failed: ${result.message}\nMake sure "Enable Anonymous Sign-ins" is ON in Supabase Auth Settings.'),
             duration: const Duration(seconds: 5),
           ),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
+    
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _continueAsGuestConfirm() async {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Continue as Guest'),
+        content: const Text('Your data will not be saved permanently. Creating an account is recommended to keep your baby\'s data safe across devices. Continue anyway?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6B9080), foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _continueAsGuest();
+            },
+            child: const Text('Yes, Continue'),
+          ),
+        ],
+      )
+    );
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() => _isLoading = true);
+    final result = await context.read<AuthRepository>().signInWithGoogle();
+    
+    if (result.isSuccess) {
+      if (mounted) {
+         await _navigateAfterAuth();
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Google Sign-In Error: ${result.message}')));
+      }
+    }
+    
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _navigateAfterAuth() async {
+      try {
+        final authRepo = context.read<AuthRepository>();
+        final metaName = authRepo.currentUser?.userMetadata?['baby_name'];
+        final profile = await authRepo.getProfile();
+        
+        final babyName = (metaName != null && metaName.toString().trim().isNotEmpty)
+             ? metaName 
+             : (profile.isSuccess && profile.data != null ? profile.data!['baby_name'] : null);
+        if (babyName != null && babyName.toString().trim().isNotEmpty) {
+           await context.read<LocalStorageService>().saveString('baby_name', babyName.toString());
+           if (mounted) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const DashboardScreen()),
+              );
+           }
+        } else {
+           if (mounted) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const BabySetupScreen()),
+              );
+           }
+        }
+      } catch (e) {
+           if (mounted) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const BabySetupScreen()),
+              );
+           }
+      }
   }
 
   @override
@@ -67,31 +139,30 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 
                 // Premium Logo Container
                 Container(
-                  width: 180,
-                  height: 180,
+                  width: 220,
+                  height: 220,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF6B9080).withOpacity(0.25),
+                        color: const Color(0xFF6B9080).withValues(alpha: 0.25),
                         blurRadius: 40,
                         offset: const Offset(0, 15),
                       ),
                       BoxShadow(
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withValues(alpha: 0.8),
                         blurRadius: 10,
                         offset: const Offset(-5, -5),
                       ),
                     ],
                   ),
                   child: ClipOval(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0), // Padding to ensure logo isn't cut if it's square
-                      child: Image.asset(
-                        'assets/logo.png',
-                        fit: BoxFit.contain, // Ensure full logo is visible inside the padding
-                      ),
+                    child: Image.asset(
+                      'assets/logo.png',
+                      width: 220,
+                      height: 220,
+                      fit: BoxFit.cover,
                     ),
                   ),
                 ),
@@ -114,7 +185,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
-                    color: const Color(0xFF2F4858).withOpacity(0.6),
+                    color: const Color(0xFF2F4858).withValues(alpha: 0.6),
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0.5,
                   ),
@@ -125,15 +196,20 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 if (_isLoading)
                   const CircularProgressIndicator(color: Color(0xFF6B9080))
                 else ...[
-                  // Primary Button
+                  // Primary Button - Sign Up
                   SizedBox(
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: _continueAsGuest,
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LoginScreen(initialIsLogin: false)),
+                        );
+                      },
                       style: ElevatedButton.styleFrom(
                         elevation: 8,
-                        shadowColor: const Color(0xFF6B9080).withOpacity(0.3),
+                        shadowColor: const Color(0xFF6B9080).withValues(alpha: 0.3),
                         backgroundColor: const Color(0xFF6B9080), // Sage
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
@@ -150,21 +226,57 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   
-                  // Secondary Button
+                  // Google Sign In
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton.icon(
+                      onPressed: _signInWithGoogle,
+                      icon: Container(
+                        width: 24,
+                        height: 24,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Text('G', style: TextStyle(color: Color(0xFF4285F4), fontWeight: FontWeight.bold, fontSize: 16)),
+                      ),
+                      label: const Text('Continue with Google', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF2F4858),
+                        side: const BorderSide(color: Color(0xFF6B9080)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Login Button
                   TextButton(
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        MaterialPageRoute(builder: (_) => const LoginScreen(initialIsLogin: true)),
                       );
                     },
                     style: TextButton.styleFrom(
                       foregroundColor: const Color(0xFF557C70),
                       textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                     ),
-                    child: Text('I already have an account'),
+                    child: const Text('No, I already have an account'),
+                  ),
+
+                  // Guest Button
+                  TextButton(
+                    onPressed: _continueAsGuestConfirm,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey[600],
+                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                    child: const Text('Continue as guest'),
                   ),
                 ],
                 const SizedBox(height: 24),

@@ -73,13 +73,13 @@ class GlassMorphCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(borderRadius),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: Colors.black.withValues(alpha: 0.08),
               blurRadius: 20,
               offset: const Offset(0, 8),
               spreadRadius: 0,
             ),
             BoxShadow(
-              color: color.withOpacity(0.3),
+              color: color.withValues(alpha: 0.3),
               blurRadius: 0,
               offset: const Offset(0, 0),
               spreadRadius: 0,
@@ -93,18 +93,18 @@ class GlassMorphCard extends StatelessWidget {
             child: Container(
               padding: padding ?? const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.7),
+                color: color.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(borderRadius),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.5),
+                  color: Colors.white.withValues(alpha: 0.5),
                   width: 1,
                 ),
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.white.withOpacity(0.8),
-                    color.withOpacity(0.6),
+                    Colors.white.withValues(alpha: 0.8),
+                    color.withValues(alpha: 0.6),
                   ],
                 ),
               ),
@@ -142,7 +142,7 @@ class QuickStatGlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassMorphCard(
-      tintColor: color.withOpacity(0.3),
+      tintColor: color.withValues(alpha: 0.3),
       onTap: onTap,
       width: 160,
       height: 140,
@@ -157,14 +157,14 @@ class QuickStatGlassCard extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [color.withOpacity(0.8), color],
+                colors: [color.withValues(alpha: 0.8), color],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.3),
+                  color: color.withValues(alpha: 0.3),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
@@ -238,7 +238,7 @@ class FeatureGlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassMorphCard(
-      tintColor: color.withOpacity(0.15),
+      tintColor: color.withValues(alpha: 0.15),
       onTap: onTap,
       padding: const EdgeInsets.all(20),
       margin: EdgeInsets.zero,
@@ -251,14 +251,14 @@ class FeatureGlassCard extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [color.withOpacity(0.7), color],
+                colors: [color.withValues(alpha: 0.7), color],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.35),
+                  color: color.withValues(alpha: 0.35),
                   blurRadius: 12,
                   offset: const Offset(0, 6),
                 ),
@@ -335,107 +335,106 @@ class NeoBackground extends StatelessWidget {
 }
 
 // ============================================
-// GLASS BOTTOM NAV BAR
-// Frosted glass navigation
 // ============================================
-class GlassBottomNav extends StatelessWidget {
+// SIMPLE SLIDING NAV BAR
+// Clean and neat native-feeling sliding indicator
+// ============================================
+class SlidingGlassNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
+  final List<IconData> icons;
+  final List<String> labels;
 
-  const GlassBottomNav({
+  const SlidingGlassNavBar({
     super.key,
     required this.currentIndex,
     required this.onTap,
+    required this.icons,
+    required this.labels,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      margin: EdgeInsets.fromLTRB(24, 0, 24, 12 + bottomPadding),
+      height: 72,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: isDark ? [] : [
+        color: isDark ? const Color(0xFF1E1E24) : Colors.white,
+        borderRadius: BorderRadius.circular(36),
+        boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 20,
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
+            blurRadius: 16,
             offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            height: 70,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: isDark 
-                    ? [Colors.white.withOpacity(0.1), Colors.white.withOpacity(0.02)]
-                    : [Colors.white.withOpacity(0.6), Colors.white.withOpacity(0.2)],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final itemWidth = constraints.maxWidth / icons.length;
+          return Stack(
+            children: [
+              // Continuous Sliding Indicator
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.fastOutSlowIn,
+                left: currentIndex * itemWidth,
+                top: 0,
+                bottom: 0,
+                width: itemWidth,
+                child: Center(
+                  child: Container(
+                    width: itemWidth * 0.85,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF2A2A32) : NeoColors.mintGreen.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(26),
+                    ),
+                  ),
+                ),
               ),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: isDark ? Colors.white.withOpacity(0.1) : Colors.white.withOpacity(0.4),
-                width: 1.2,
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(context, Icons.home_rounded, 'Home', 0),
-                _buildNavItem(context, Icons.access_time_rounded, 'History', 1),
-                _buildNavItem(context, Icons.favorite_rounded, 'Care', 2),
-                _buildNavItem(context, Icons.person_rounded, 'Profile', 3),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+              // Nav Items
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: List.generate(icons.length, (index) {
+                  final isSelected = currentIndex == index;
+                  final selectedColor = isDark ? Colors.white : NeoColors.mintGreen;
+                  final unselectedColor = isDark ? Colors.white.withValues(alpha: 0.4) : const Color(0xFF9E9E9E);
 
-  Widget _buildNavItem(BuildContext context, IconData icon, String label, int index) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isSelected = currentIndex == index;
-    
-    final selectedColor = isDark ? Colors.white.withOpacity(0.9) : NeoColors.mintGreen;
-    final unselectedColor = isDark ? Colors.white.withOpacity(0.6) : NeoColors.textLight;
-    final selectedBgColor = isDark ? Colors.white.withOpacity(0.1) : NeoColors.mintGreen.withOpacity(0.15);
-
-    return GestureDetector(
-      onTap: () => onTap(index),
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? selectedBgColor : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? selectedColor : unselectedColor,
-              size: 26,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                color: isSelected ? selectedColor : unselectedColor,
+                  return GestureDetector(
+                    onTap: () => onTap(index),
+                    behavior: HitTestBehavior.opaque,
+                    child: SizedBox(
+                      width: itemWidth,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            icons[index],
+                            color: isSelected ? selectedColor : unselectedColor,
+                            size: 26,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            labels[index],
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                              color: isSelected ? selectedColor : unselectedColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }

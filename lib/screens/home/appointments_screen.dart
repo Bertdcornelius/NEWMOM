@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:convert';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/local_storage_service.dart';
+import '../../repositories/auth_repository.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/premium_ui_components.dart';
 
@@ -32,15 +34,31 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> with SingleTick
     super.dispose();
   }
 
-  void _loadData() {
+  void _loadData() async {
     final ls = context.read<LocalStorageService>();
-    final raw = ls.getString('appointments');
-    if (raw != null) _appointments = List<Map<String, dynamic>>.from(jsonDecode(raw));
+    final auth = context.read<AuthRepository>();
+
+    final meta = auth.currentUser?.userMetadata?['appointments'];
+    if (meta != null && meta is String) {
+        _appointments = List<Map<String, dynamic>>.from(jsonDecode(meta));
+        ls.saveString('appointments', meta);
+    } else {
+        final raw = ls.getString('appointments');
+        if (raw != null) _appointments = List<Map<String, dynamic>>.from(jsonDecode(raw));
+    }
     if (mounted) setState(() {});
   }
 
   Future<void> _saveData() async {
-    await context.read<LocalStorageService>().saveString('appointments', jsonEncode(_appointments));
+    final payload = jsonEncode(_appointments);
+    await context.read<LocalStorageService>().saveString('appointments', payload);
+
+    try {
+        final auth = context.read<AuthRepository>();
+        if (auth.currentUser != null) {
+            await auth.updateUser(UserAttributes(data: {'appointments': payload}));
+        }
+    } catch (_) {}
   }
 
   List<Map<String, dynamic>> get _upcoming {

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../services/supabase_service.dart';
+import '../../repositories/auth_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../widgets/premium_ui_components.dart';
 import 'package:flutter/cupertino.dart';
 import '../../providers/theme_provider.dart';
+import '../../services/local_storage_service.dart';
+import '../auth/welcome_screen.dart';
+import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -18,6 +21,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _profile;
   List<String> _devices = [];
 
+  String _displayBabyName = 'Baby';
+
   @override
   void initState() {
     super.initState();
@@ -25,14 +30,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final service = context.read<SupabaseService>();
-    final data = await service.getProfile();
+    final auth = context.read<AuthRepository>();
+    final localStorage = context.read<LocalStorageService>();
+    final localBabyName = localStorage.getString('baby_name');
+
+    final result = await auth.getProfile();
+    final data = result.data;
     if (mounted) {
       setState(() {
         _profile = data;
+        _displayBabyName = data?['baby_name'] ?? localBabyName ?? 'Baby';
         _devices = List<String>.from(data?['device_ids'] ?? []);
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    await context.read<LocalStorageService>().saveString('guest_mode', 'false');
+    await context.read<LocalStorageService>().remove('baby_name');
+    await context.read<AuthRepository>().signOut();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+        (route) => false,
+      );
     }
   }
 
@@ -48,29 +70,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: PremiumColors(context).surface,
         elevation: 0,
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.redAccent),
+            onPressed: _handleLogout,
+            tooltip: 'Log Out',
+          ),
+        ],
       ),
       body: _isLoading 
         ? Center(child: CircularProgressIndicator(color: PremiumColors(context).gentlePurple))
         : ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // App Logo
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: PremiumColors(context).surface,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 24, offset: const Offset(0, 12))
-                    ]
+              // Premium Hero Header
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [PremiumColors(context).sereneBlue, PremiumColors(context).gentlePurple],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight,
                   ),
-                  child: Image.asset('assets/logo.png', height: 80)
-                )
+                  borderRadius: BorderRadius.circular(32),
+                  boxShadow: [
+                    BoxShadow(color: PremiumColors(context).gentlePurple.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10)),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: CircleAvatar(
+                        radius: 40,
+                        backgroundColor: Colors.white,
+                        child: Image.asset('assets/logo.png', height: 40),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(_displayBabyName, style: PremiumTypography(context).h1.copyWith(color: Colors.white)),
+                    const SizedBox(height: 4),
+                    Text(user?.isAnonymous == true ? 'Guest Account' : (user?.email?.isNotEmpty == true ? user!.email! : 'Google Account'), style: PremiumTypography(context).body.copyWith(color: Colors.white70)),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final didUpdate = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => EditProfileScreen(initialData: _profile ?? {})),
+                        );
+                        if (didUpdate == true && mounted) {
+                          _loadProfile();
+                        }
+                      },
+                      icon: const Icon(Icons.edit_rounded, size: 16),
+                      label: const Text('Edit Profile'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white54),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Center(child: Text(_profile?['baby_name'] ?? 'Baby', style: PremiumTypography(context).h2)),
-              Center(child: Text(user?.email ?? '', style: PremiumTypography(context).body)),
               const SizedBox(height: 32),
               
               _sectionHeader('Membership'),
@@ -156,10 +222,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 24),
               _sectionHeader('Active Devices'),
-              if (_devices.isEmpty)
-                Padding(padding: const EdgeInsets.all(16), child: Text("No devices logged.", style: PremiumTypography(context).body))
-              else
-                ..._devices.map((d) => Padding(
+              Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: DataTile(
                     backgroundColor: PremiumColors(context).surface,
@@ -171,16 +234,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text("Device ID: ${d.substring(0, d.length > 8 ? 8 : d.length)}...", style: PremiumTypography(context).title),
+                              Text("Current Phone Session", style: PremiumTypography(context).title),
                               const SizedBox(height: 4),
-                              Text("Active", style: PremiumTypography(context).caption),
+                              Text("Active Now", style: PremiumTypography(context).caption.copyWith(color: PremiumColors(context).sageGreen)),
                             ]
                           )
                         )
                       ]
                     )
                   ),
-                )),
+                ),
 
                 if (user?.isAnonymous == true)
                   Padding(
@@ -216,19 +279,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 48),
               if (user?.isAnonymous == false)
                 ElevatedButton.icon(
-                  onPressed: () => context.read<SupabaseService>().signOut(), 
-                  icon: Icon(Icons.logout),
-                  label: Text('Log Out'),
+                  onPressed: _handleLogout, 
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Log Out'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red[50],
+                    backgroundColor: Colors.red[50], // Soft red
                     foregroundColor: Colors.red,
-                    minimumSize: const Size(double.infinity, 50)
+                    elevation: 0,
+                    minimumSize: const Size(double.infinity, 56),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                 )
               else 
-                TextButton(
-                    onPressed: () => context.read<SupabaseService>().signOut(),
-                    child: Text("Exit Guest Mode (Data will be lost)", style: TextStyle(color: Colors.red)),
+                TextButton.icon(
+                    onPressed: _handleLogout,
+                    icon: const Icon(Icons.person_off_rounded, color: Colors.red),
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    label: const Text("Exit Guest Mode (Data will be lost)", style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
                
             ],
@@ -265,9 +332,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                              Navigator.pop(context); // Close dialog first
                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Linking account...")));
                              
-                             await context.read<SupabaseService>().updateUser(
-                                 emailController.text,
-                                 passwordController.text
+                             await context.read<AuthRepository>().updateUser(
+                                 UserAttributes(email: emailController.text, password: passwordController.text)
                              );
                              
                              if (mounted) {
@@ -343,7 +409,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     // Proceed with subscription (Mock)
                                     if (context.mounted) Navigator.pop(context);
                                     if (context.mounted) {
-                                      await context.read<SupabaseService>().updateProfile({'is_premium': true});
+                                      await context.read<AuthRepository>().updateProfile({'is_premium': true});
                                     }
                                     await _loadProfile();
                                     if (context.mounted) {

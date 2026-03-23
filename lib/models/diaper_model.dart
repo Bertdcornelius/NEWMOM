@@ -25,7 +25,6 @@ class DiaperLog {
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
       'user_id': userId,
       'type': type,
       'notes': notes,

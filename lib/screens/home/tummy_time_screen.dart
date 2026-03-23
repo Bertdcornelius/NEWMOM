@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'dart:convert';
+import 'package:uuid/uuid.dart';
 import 'dart:async';
-import 'dart:math';
-import 'package:intl/intl.dart' hide TextDirection;
 import '../../services/local_storage_service.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/care_repository.dart';
 import '../../widgets/premium_ui_components.dart';
+import '../../widgets/tummy_time/timer_card.dart';
+import '../../widgets/tummy_time/weekly_chart.dart';
+import '../../widgets/tummy_time/session_list.dart';
 
 class TummyTimeScreen extends StatefulWidget {
   const TummyTimeScreen({super.key});
@@ -17,7 +20,9 @@ class TummyTimeScreen extends StatefulWidget {
 
 class _TummyTimeScreenState extends State<TummyTimeScreen> {
   List<Map<String, dynamic>> _sessions = [];
+  final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
   int _dailyGoalMin = 30;
+  bool _isLoading = true;
 
   // Timer
   final Stopwatch _stopwatch = Stopwatch();
@@ -37,18 +42,49 @@ class _TummyTimeScreenState extends State<TummyTimeScreen> {
     super.dispose();
   }
 
-  void _loadData() {
+  Future<void> _loadData() async {
+    final ss = context.read<CareRepository>();
     final ls = context.read<LocalStorageService>();
-    final raw = ls.getString('tummy_time_sessions');
-    if (raw != null) _sessions = List<Map<String, dynamic>>.from(jsonDecode(raw));
+    
+    final data = (await ss.getTummyTimeSessions()).data ?? [];
     _dailyGoalMin = int.tryParse(ls.getString('tummy_goal') ?? '30') ?? 30;
-    if (mounted) setState(() {});
+    
+    if (mounted) {
+      setState(() {
+        _sessions = List<Map<String, dynamic>>.from(data);
+        _isLoading = false;
+      });
+    }
   }
 
-  Future<void> _saveData() async {
+  Future<void> _saveSession(int durSec) async {
+    final user = context.read<AuthRepository>().currentUser;
+    if (user == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not logged in'), backgroundColor: Colors.red));
+      return;
+    }
+    final ss = context.read<CareRepository>();
+    final newSession = {
+      'user_id': user.id,
+      'duration_sec': durSec,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    
+    // Optimistic UI update
+    _sessions.insert(0, newSession);
+    _listKey.currentState?.insertItem(0, duration: const Duration(milliseconds: 500));
+    
+    final result = await ss.saveTummyTimeSession(newSession);
+    if (!result.isSuccess && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message ?? 'Failed to save'), backgroundColor: Colors.red));
+    }
+    _loadData(); // Refresh to get proper IDs and dates
+  }
+
+  Future<void> _updateGoal(int goal) async {
     final ls = context.read<LocalStorageService>();
-    await ls.saveString('tummy_time_sessions', jsonEncode(_sessions));
-    await ls.saveString('tummy_goal', _dailyGoalMin.toString());
+    await ls.saveString('tummy_goal', goal.toString());
+    setState(() => _dailyGoalMin = goal);
   }
 
   void _toggleTimer() {
@@ -60,12 +96,7 @@ class _TummyTimeScreenState extends State<TummyTimeScreen> {
         // Auto-save session
         final durSec = _stopwatch.elapsed.inSeconds;
         if (durSec > 0) {
-          _sessions.insert(0, {
-            'duration_sec': durSec,
-            'date': DateFormat('MMM d, h:mm a').format(DateTime.now()),
-            'timestamp': DateTime.now().toIso8601String(),
-          });
-          _saveData();
+          _saveSession(durSec);
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tummy time saved! 🎉')));
         }
         _stopwatch.reset();
@@ -117,9 +148,7 @@ class _TummyTimeScreenState extends State<TummyTimeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = PremiumColors(context);
     final typo = PremiumTypography(context);
-    final todayMin = _todayTotalSec / 60.0;
 
     return PremiumScaffold(
       appBar: AppBar(
@@ -136,138 +165,29 @@ class _TummyTimeScreenState extends State<TummyTimeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Progress Ring + Timer
-                  PremiumCard(
-                    child: Column(
-                      children: [
-                        // Progress Ring
-                        SizedBox(
-                          width: 200, height: 200,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              CustomPaint(
-                                size: const Size(200, 200),
-                                painter: _ProgressRingPainter(
-                                  progress: _todayProgress,
-                                  color: colors.softAmber,
-                                  bgColor: colors.surfaceMuted,
-                                ),
-                              ),
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_isTimerRunning)
-                                    Text(_formatElapsed(), style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 36, fontWeight: FontWeight.w800, color: colors.softAmber,
-                                      fontFeatures: const [FontFeature.tabularFigures()],
-                                    ))
-                                  else
-                                    Text('${todayMin.toStringAsFixed(0)}m', style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 36, fontWeight: FontWeight.w800, color: colors.textPrimary,
-                                    )),
-                                  Text(_isTimerRunning ? 'In progress...' : 'of ${_dailyGoalMin}m goal', style: typo.caption),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Timer Button
-                        PremiumActionButton(
-                          label: _isTimerRunning ? 'Stop & Save' : 'Start Tummy Time',
-                          icon: _isTimerRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                          color: _isTimerRunning ? colors.warmPeach : colors.softAmber,
-                          onTap: _toggleTimer,
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Goal Setter
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text('Daily Goal: ', style: typo.body),
-                            GestureDetector(
-                              onTap: _showGoalDialog,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: colors.softAmber.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text('$_dailyGoalMin min', style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 14, fontWeight: FontWeight.w700, color: colors.softAmber,
-                                )),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                  TummyTimeTimerCard(
+                    isTimerRunning: _isTimerRunning,
+                    formattedTime: _formatElapsed(),
+                    todayProgress: _todayProgress,
+                    todayMin: _todayTotalSec / 60.0,
+                    dailyGoalMin: _dailyGoalMin,
+                    onToggleTimer: _toggleTimer,
+                    onEditGoal: _showGoalDialog,
                   ),
                   const SizedBox(height: 24),
 
-                  // Weekly Trend
-                  PremiumCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('This Week', style: typo.title),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 120,
-                          child: CustomPaint(
-                            size: const Size(double.infinity, 120),
-                            painter: _WeeklyBarPainter(
-                              data: _weeklyData,
-                              barColor: colors.softAmber,
-                              textColor: colors.textSecondary,
-                                goalSec: _dailyGoalMin * 60,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
+                  TummyTimeWeeklyChart(
+                    weeklyData: _weeklyData,
+                    dailyGoalMin: _dailyGoalMin,
+                  ),
+                  const SizedBox(height: 24),
 
-                  // Session History
-                  Text('Sessions', style: typo.h2),
-                  const SizedBox(height: 12),
-
-                  if (_sessions.isEmpty)
-                    PremiumCard(child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Center(child: Text('No sessions yet. Start tummy time!', style: typo.body)),
-                    ))
-                  else
-                    ...List.generate(_sessions.length > 20 ? 20 : _sessions.length, (i) {
-                      final s = _sessions[i];
-                      final durSec = s['duration_sec'] as int? ?? 0;
-                      final durStr = durSec >= 60 ? '${durSec ~/ 60}m ${durSec % 60}s' : '${durSec}s';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: DataTile(
-                          onTap: () => _deleteSession(i),
-                          child: Row(
-                            children: [
-                              PremiumBubbleIcon(icon: Icons.timer_outlined, color: colors.softAmber, size: 20, padding: 10),
-                              const SizedBox(width: 12),
-                              Expanded(child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(durStr, style: typo.bodyBold),
-                                  Text(s['date'] ?? '', style: typo.caption),
-                                ],
-                              )),
-                              Icon(Icons.chevron_right_rounded, color: colors.textMuted, size: 20),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-
+                  TummyTimeSessionList(
+                    sessions: _sessions,
+                    listKey: _listKey,
+                    onDeleteSession: _deleteSession,
+                    isLoading: _isLoading,
+                  ),
                   const SizedBox(height: 80),
                 ],
               ),
@@ -301,8 +221,7 @@ class _TummyTimeScreenState extends State<TummyTimeScreen> {
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             TextButton(
               onPressed: () {
-                setState(() => _dailyGoalMin = tempGoal);
-                _saveData();
+                _updateGoal(tempGoal);
                 Navigator.pop(ctx);
               },
               child: const Text('Save'),
@@ -321,11 +240,26 @@ class _TummyTimeScreenState extends State<TummyTimeScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              final item = _sessions[index];
+              final ss = context.read<CareRepository>();
+              
+              // Animated removal
+              _listKey.currentState?.removeItem(
+                index,
+                (context, animation) => TummyTimeSessionList.buildSessionTile(
+                  item, index, animation, PremiumColors(context), PremiumTypography(context), () {}
+                ),
+                duration: const Duration(milliseconds: 300),
+              );
               _sessions.removeAt(index);
-              _saveData();
-              Navigator.pop(ctx);
-              setState(() {});
+              
+              if (item['id'] != null) {
+                await ss.deleteTummyTimeSession(item['id']);
+              }
+              
+              if (mounted) Navigator.pop(ctx);
+              _loadData();
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
@@ -333,85 +267,4 @@ class _TummyTimeScreenState extends State<TummyTimeScreen> {
       ),
     );
   }
-}
-
-class _ProgressRingPainter extends CustomPainter {
-  final double progress;
-  final Color color;
-  final Color bgColor;
-
-  _ProgressRingPainter({required this.progress, required this.color, required this.bgColor});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 12;
-    final stroke = 10.0;
-
-    // Background ring
-    canvas.drawCircle(center, radius, Paint()..style = PaintingStyle.stroke..strokeWidth = stroke..color = bgColor);
-
-    // Progress arc
-    final progressPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
-      ..color = color;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -pi / 2,
-      2 * pi * progress,
-      false,
-      progressPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _ProgressRingPainter old) => old.progress != progress;
-}
-
-class _WeeklyBarPainter extends CustomPainter {
-  final List<int> data;
-  final Color barColor;
-  final Color textColor;
-  final int goalSec;
-
-  _WeeklyBarPainter({required this.data, required this.barColor, required this.textColor, required this.goalSec});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final now = DateTime.now();
-    final startDay = now.subtract(const Duration(days: 6));
-
-    final barWidth = size.width / 9;
-    final maxVal = data.isEmpty ? goalSec.toDouble() : max(data.reduce(max).toDouble(), goalSec.toDouble());
-    final chartHeight = size.height - 24;
-
-    for (int i = 0; i < 7; i++) {
-      final x = barWidth * 0.5 + i * (size.width / 7);
-      final val = i < data.length ? data[i].toDouble() : 0;
-      final barHeight = maxVal > 0 ? (val / maxVal) * chartHeight : 0;
-
-      // Bar
-      final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(x - barWidth / 3, chartHeight - barHeight, barWidth * 2 / 3, barHeight.toDouble()),
-        const Radius.circular(6),
-      );
-      canvas.drawRRect(rect, Paint()..color = val >= goalSec ? barColor : barColor.withValues(alpha: 0.4));
-
-      // Label
-      final day = startDay.add(Duration(days: i));
-      final label = labels[day.weekday - 1];
-      final tp = TextPainter(
-        text: TextSpan(text: label, style: TextStyle(color: textColor, fontSize: 10)),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(x - tp.width / 2, chartHeight + 6));
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _WeeklyBarPainter old) => true;
 }

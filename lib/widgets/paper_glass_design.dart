@@ -101,13 +101,13 @@ class PaperCard extends StatelessWidget {
           boxShadow: [
             // Primary drop shadow
             BoxShadow(
-              color: PaperGlassColors.shadow.withOpacity(0.2),
+              color: PaperGlassColors.shadow.withValues(alpha: 0.2),
               offset: const Offset(4, 4),
               blurRadius: 2,
             ),
             // Sharp paper edge shadow
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               offset: const Offset(0, 1),
               blurRadius: 0,
             ),
@@ -128,9 +128,9 @@ class PaperCard extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.25), // Highlight (Top of fold)
+                Colors.white.withValues(alpha: 0.25), // Highlight (Top of fold)
                 Colors.transparent,
-                Colors.black.withOpacity(0.05), // Shadow (Bottom of fold)
+                Colors.black.withValues(alpha: 0.05), // Shadow (Bottom of fold)
               ],
               stops: const [0.0, 0.4, 1.0],
             ),
@@ -167,7 +167,7 @@ class QuickStatPaperCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PaperCard(
-      color: color.withOpacity(0.15),
+      color: color.withValues(alpha: 0.15),
       onTap: onTap,
       width: 150,
       height: 130,
@@ -180,11 +180,11 @@ class QuickStatPaperCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
+              color: color.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(4),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   offset: const Offset(1, 1),
                   blurRadius: 1,
                 ),
@@ -209,7 +209,7 @@ class QuickStatPaperCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: color.withOpacity(0.9),
+              color: color.withValues(alpha: 0.9),
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -254,7 +254,7 @@ class FeaturePaperCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PaperCard(
-      color: color.withOpacity(0.12),
+      color: color.withValues(alpha: 0.12),
       onTap: onTap,
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -265,11 +265,11 @@ class FeaturePaperCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
+              color: color.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(4),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   offset: const Offset(2, 2),
                   blurRadius: 2,
                 ),
@@ -331,15 +331,15 @@ class GlassOverlay extends StatelessWidget {
           child: Container(
             padding: padding ?? const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(borderRadius),
               border: Border.all(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   spreadRadius: 2,
                 ),
@@ -379,10 +379,10 @@ class GlassBottomNavBar extends StatelessWidget {
           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.4),
+              color: Colors.white.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 width: 1.5,
               ),
             ),
@@ -435,7 +435,7 @@ class PaperAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ) : null),
       centerTitle: centerTitle,
-      backgroundColor: PaperGlassColors.background.withOpacity(0.95),
+      backgroundColor: PaperGlassColors.background.withValues(alpha: 0.95),
       elevation: 0,
       iconTheme: const IconThemeData(color: Color(0xFF2D3436)),
       actions: actions,

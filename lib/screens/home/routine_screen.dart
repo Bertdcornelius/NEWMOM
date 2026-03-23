@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/routine_model.dart';
-import '../../services/supabase_service.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/care_repository.dart';
 import '../../widgets/premium_ui_components.dart';
 
 class RoutineScreen extends StatefulWidget {
@@ -25,8 +26,8 @@ class _RoutineScreenState extends State<RoutineScreen> {
   Future<void> _fetchRoutines() async {
     setState(() => _isLoading = true);
 
-    final service = context.read<SupabaseService>();
-    final data = await service.getRoutines();
+    final service = context.read<CareRepository>();
+    final data = (await service.getRoutines()).data ?? [];
     setState(() {
       _routines = data.map((e) => Routine.fromJson(e)).toList();
       _isLoading = false;
@@ -73,9 +74,11 @@ class _RoutineScreenState extends State<RoutineScreen> {
               onPressed: () async {
                 if (titleController.text.isEmpty) return;
                 
-                final service = context.read<SupabaseService>();
-                final user = service.currentUser;
-                if (user == null) return;
+                final user = context.read<AuthRepository>().currentUser;
+                if (user == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not logged in'), backgroundColor: Colors.red));
+                  return;
+                }
 
                 final newRoutine = Routine(
                   id: Uuid().v4(),
@@ -86,9 +89,15 @@ class _RoutineScreenState extends State<RoutineScreen> {
                   createdAt: DateTime.now(),
                 );
                 
-                await service.saveRoutine(newRoutine.toJson());
-                _fetchRoutines(); // Refresh
-                Navigator.pop(context);
+                final service = context.read<CareRepository>();
+                final result = await service.saveRoutine(newRoutine.toJson());
+                if (result.isSuccess) {
+                  _fetchRoutines();
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Routine saved!')));
+                } else if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message ?? 'Failed to save'), backgroundColor: Colors.red));
+                }
               },
               child: Text('Save'),
             ),
@@ -221,7 +230,7 @@ class _RoutineScreenState extends State<RoutineScreen> {
                           title: Text('Delete Routine'),
                           onTap: () async {
                               Navigator.pop(context);
-                              await context.read<SupabaseService>().deleteRoutine(routine.id);
+                              await context.read<CareRepository>().deleteRoutine(routine.id);
                               _fetchRoutines();
                           },
                       ),
@@ -273,7 +282,7 @@ class _RoutineScreenState extends State<RoutineScreen> {
                                       'title': titleController.text,
                                       'time': '${selectedTime.hour.toString().padLeft(2,'0')}:${selectedTime.minute.toString().padLeft(2,'0')}:00', 
                                   };
-                                  await context.read<SupabaseService>().updateRoutine(routine.id, updates);
+                                  await context.read<CareRepository>().updateRoutine(routine.id, updates);
                                   _fetchRoutines();
                                   Navigator.pop(context);
                               }

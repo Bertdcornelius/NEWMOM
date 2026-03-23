@@ -32,7 +32,7 @@ class _FeedingAnalyticsScreenState extends State<FeedingAnalyticsScreen> {
     final feeds = await service.getFeeds();
     if (mounted) {
       setState(() {
-        _feeds = feeds;
+        _feeds = List<Map<String, dynamic>>.from(feeds);
         _isLoading = false;
       });
     }

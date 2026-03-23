@@ -7,8 +7,9 @@ import 'dart:convert';
 /// Tests the core queue logic of the OfflineSyncService.
 /// Since OfflineSyncService depends on LocalStorageService which requires SharedPreferences,
 /// we test the serialization and queue logic in isolation.
-
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  
   group('OfflineSyncAction Serialization', () {
     test('serializes action to JSON correctly', () {
       final action = {
@@ -121,16 +122,16 @@ void main() {
     });
 
     test('showOnboarding is true when baby name is null and not loading', () {
-      String? babyName;
+      String? babyName = [null].first;
       bool isLoading = false;
-      final showOnboarding = (babyName == null || babyName == 'Baby') && !isLoading;
+      final showOnboarding = (babyName == null) && !isLoading;
       expect(showOnboarding, true);
     });
 
     test('showOnboarding is false when loading', () {
-      String? babyName;
+      String? babyName = [null].first;
       bool isLoading = true;
-      final showOnboarding = (babyName == null || babyName == 'Baby') && !isLoading;
+      final showOnboarding = (babyName == null) && !isLoading;
       expect(showOnboarding, false);
     });
   });

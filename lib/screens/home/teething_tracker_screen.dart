@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'dart:convert';
 import 'package:intl/intl.dart';
-import '../../services/local_storage_service.dart';
+import 'package:uuid/uuid.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/care_repository.dart';
 import '../../widgets/premium_ui_components.dart';
 
 class TeethingTrackerScreen extends StatefulWidget {
@@ -43,20 +43,41 @@ class _TeethingTrackerScreenState extends State<TeethingTrackerScreen> {
     super.dispose();
   }
 
-  void _loadData() {
-    final ls = context.read<LocalStorageService>();
-    final raw = ls.getString('teething_data');
-    if (raw != null) {
-      _teethData = Map<String, Map<String, dynamic>>.from(
-      (jsonDecode(raw) as Map).map((k, v) => MapEntry(k.toString(), Map<String, dynamic>.from(v))),
-    );
+  Future<void> _loadData() async {
+    final ss = context.read<CareRepository>();
+    final data = (await ss.getTeethingData()).data ?? [];
+    
+    // Map list to our specific format
+    _teethData = {};
+    for (var item in data) {
+      _teethData[item['tooth_index'].toString()] = {
+        'id': item['id'],
+        'erupted': true,
+        'date': item['erupted_date'],
+        'notes': item['notes'],
+      };
     }
+    
     if (mounted) setState(() {});
   }
 
-  Future<void> _saveData() async {
-    final ls = context.read<LocalStorageService>();
-    await ls.saveString('teething_data', jsonEncode(_teethData));
+  Future<void> _saveTooth(int index, String date, String notes) async {
+    final user = context.read<AuthRepository>().currentUser;
+    if (user == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not logged in. Please sign in first.'), backgroundColor: Colors.red));
+      return;
+    }
+    final ss = context.read<CareRepository>();
+    final result = await ss.saveTeethingData({
+      'user_id': user.id,
+      'tooth_index': index,
+      'erupted_date': date,
+      'notes': notes,
+    });
+    if (!result.isSuccess && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message ?? 'Failed to save'), backgroundColor: Colors.red));
+    }
+    _loadData();
   }
 
   int get _eruptedCount => _teethData.values.where((t) => t['erupted'] == true).length;
@@ -92,7 +113,7 @@ class _TeethingTrackerScreenState extends State<TeethingTrackerScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('Teeth Erupted', style: typo.caption),
-                            Text('$_eruptedCount / 20', style: GoogleFonts.plusJakartaSans(
+                            Text('$_eruptedCount / 20', style: PremiumTypography(context).bodyBold.copyWith(
                               fontSize: 24, fontWeight: FontWeight.w800, color: colors.warmPeach,
                             )),
                           ],
@@ -191,7 +212,7 @@ class _TeethingTrackerScreenState extends State<TeethingTrackerScreen> {
         child: Center(
           child: Text(
             toothLabels[index],
-            style: GoogleFonts.plusJakartaSans(
+            style: PremiumTypography(context).bodyBold.copyWith(
               fontSize: 10, fontWeight: FontWeight.w800,
               color: isErupted ? Colors.white : colors.textMuted,
             ),
@@ -226,11 +247,13 @@ class _TeethingTrackerScreenState extends State<TeethingTrackerScreen> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
             TextButton(
-              onPressed: () {
-                _teethData.remove(key);
-                _saveData();
-                Navigator.pop(ctx);
-                setState(() {});
+              onPressed: () async {
+                final ss = context.read<CareRepository>();
+                if (current?['id'] != null) {
+                  await ss.deleteTeethingData(current!['id']);
+                }
+                _loadData();
+                if (ctx.mounted) Navigator.pop(ctx);
               },
               child: const Text('Remove', style: TextStyle(color: Colors.red)),
             ),
@@ -259,15 +282,9 @@ class _TeethingTrackerScreenState extends State<TeethingTrackerScreen> {
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             TextButton(
               onPressed: () {
-                _teethData[key] = {
-                  'erupted': true,
-                  'date': DateFormat('MMM d, yyyy').format(DateTime.now()),
-                  'notes': notesC.text,
-                };
-                _saveData();
+                _saveTooth(index, DateFormat('MMM d, yyyy').format(DateTime.now()), notesC.text);
                 Navigator.pop(ctx);
-                setState(() {});
-              },
+            },
               child: const Text('Mark Erupted'),
             ),
           ],
